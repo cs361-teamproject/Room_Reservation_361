@@ -1,9 +1,16 @@
+import { useState } from 'react'
 import type { CSSProperties } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import RoomGallery from '../components/RoomGallery'
 import EquipmentBar from '../components/EquipmentBar'
 import BookingRules from '../components/BookingRules'
 import RoomSchedule from '../components/RoomSchedule'
+import BookingFormModal from '../components/BookingFormModal'
+import { rolesLabel } from '../utils/bookingRules'
+import { useToast } from '../components/Toast'
+import { disabledBtn, primaryBtn } from '../components/buttons'
+import { MOCK_USER } from '../mocks/bookings'
+import { getRoomRules } from '../services/bookings'
 import { useAsync } from '../hooks/useAsync'
 import { getRoom } from '../services/rooms'
 import monitorIcon from '../assets/icon-mornitor.png'
@@ -19,6 +26,8 @@ export default function RoomDetail() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { data: room, error, loading } = useAsync(id, () => getRoom(id))
+  const [booking, setBooking] = useState(false)
+  const { toast, show } = useToast()
 
   if (loading) {
     return (
@@ -39,6 +48,14 @@ export default function RoomDetail() {
   }
 
   const status = STATUS_TAG[room.status] ?? { label: room.status, color: '#6b6b6b' }
+  const rules = getRoomRules(room.name)
+  // Until T3 brings login, the user is the mock student (see mocks/bookings.ts)
+  const blockedReason =
+    room.status !== 'AVAILABLE'
+      ? 'ห้องนี้ปิดปรับปรุง ยังจองไม่ได้'
+      : !rules.allowed_roles.includes(MOCK_USER.role)
+        ? `ห้องนี้จองได้เฉพาะ${rolesLabel(rules.allowed_roles)}`
+        : null
 
   return (
     <main className="room-detail-page" style={styles.main}>
@@ -78,8 +95,18 @@ export default function RoomDetail() {
               <span className="room-detail-status" style={{ ...styles.statusTag, background: status.color }}>
                 {status.label}
               </span>
+              <button
+                className="room-detail-book"
+                style={{ ...primaryBtn, ...styles.bookBtn, ...(blockedReason ? disabledBtn : null) }}
+                disabled={Boolean(blockedReason)}
+                title={blockedReason ?? undefined}
+                onClick={() => setBooking(true)}
+              >
+                จองห้องนี้
+              </button>
             </div>
           </div>
+          {blockedReason && <p style={styles.blocked}>{blockedReason}</p>}
 
           <EquipmentBar room={room} />
         </div>
@@ -90,8 +117,28 @@ export default function RoomDetail() {
           focusDate={searchParams.get('date') ?? undefined}
         />
 
-        <BookingRules />
+        <BookingRules rules={rules} />
       </div>
+
+      {booking && (
+        <BookingFormModal
+          room={{ id: room.id, name: room.name }}
+          rules={rules}
+          onClose={() => setBooking(false)}
+          onDone={() => {
+            setBooking(false)
+            show(
+              <>
+                ส่งคำขอแล้ว รอเจ้าหน้าที่อนุมัติ
+                <Link to="/my-bookings" style={styles.toastLink}>
+                  ดูการจองของฉัน
+                </Link>
+              </>,
+            )
+          }}
+        />
+      )}
+      {toast}
     </main>
   )
 }
@@ -153,6 +200,9 @@ const styles: Record<string, CSSProperties> = {
   },
   capacityText: { fontSize: 15, fontWeight: 600 },
   capacityValue: { fontSize: 15, fontWeight: 700 },
+  bookBtn: { height: 40, minWidth: 150 },
+  blocked: { margin: '12px 0 0', textAlign: 'right', fontSize: 14, color: '#B91C1C' },
+  toastLink: { color: '#FCD34D', fontWeight: 600, whiteSpace: 'nowrap' },
   statusTag: {
     display: 'flex',
     alignItems: 'center',

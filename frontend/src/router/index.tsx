@@ -3,6 +3,7 @@ import MainLayout from '../layouts/MainLayout'
 import Rooms from '../pages/Rooms'
 import RoomDetail from '../pages/RoomDetail'
 import AdminConsole from '../pages/AdminConsole'
+import MyBookings from '../pages/MyBookings'
 
 export const router = createBrowserRouter([
   {
@@ -16,6 +17,10 @@ export const router = createBrowserRouter([
       {
         path: 'rooms/:id',
         element: <RoomDetail />,
+      },
+      {
+        path: 'my-bookings',
+        element: <MyBookings />,
       },
       {
         path: 'admin/console',

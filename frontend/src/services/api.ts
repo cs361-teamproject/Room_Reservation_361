@@ -109,3 +109,18 @@ export const deleteRequest = async <T = any>(
 }
 
 
+/**
+ * Error from a write endpoint, keeping the HTTP status so the UI can tell
+ * 400 (fix the form) from 403 (not allowed) and 409 (slot taken).
+ */
+export class ApiError extends Error {
+  readonly status: number
+  readonly messages: string[]
+
+  constructor(status: number, message: string | string[]) {
+    const messages = Array.isArray(message) ? message : [message]
+    super(messages.join(', '))
+    this.status = status
+    this.messages = messages
+  }
+}

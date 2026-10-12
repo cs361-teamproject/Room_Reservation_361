@@ -11,7 +11,11 @@ interface NavBarProps {
   items?: NavItem[]
 }
 
-const defaultItems: NavItem[] = [{ label: 'All rooms', to: '/' }]
+// "การจองของฉัน" is shown to everyone until T3 adds login and role-based menus
+const defaultItems: NavItem[] = [
+  { label: 'All rooms', to: '/' },
+  { label: 'การจองของฉัน', to: '/my-bookings' },
+]
 
 export default function NavBar({ items = defaultItems }: NavBarProps) {
   const location = useLocation()
