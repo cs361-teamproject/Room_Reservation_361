@@ -1,6 +1,8 @@
 import { isAxiosError } from 'axios'
 import axiosInstance from '../config/axios'
-import { DEFAULT_ROOM_RULES, MOCK_ROOM_RULES, mockBookings } from '../mocks/bookings'
+import { USE_MOCK_API } from '../config/mock'
+import { mockBookings } from '../mocks/bookings'
+import { mockRoomRules } from '../mocks/rooms'
 import type {
   Booking,
   BookingDetail,
@@ -20,7 +22,7 @@ export const getRoomBookings = (roomId: string, from: string, to: string) =>
 
 // The write endpoints and "my bookings" (T5–T7) are mocked until the frontend is wired to them.
 // Set VITE_USE_MOCK_BOOKINGS=false to call the real API; the shapes are the same.
-const USE_MOCK = import.meta.env.VITE_USE_MOCK_BOOKINGS !== 'false'
+const USE_MOCK = USE_MOCK_API
 
 /** Unwraps { success, message, data } and turns HTTP errors into ApiError (status + messages) */
 async function send<T>(request: Promise<{ data: { data: T } }>): Promise<T> {
@@ -35,7 +37,7 @@ async function send<T>(request: Promise<{ data: { data: T } }>): Promise<T> {
 }
 
 /** Rules of a room. Until GET /api/rooms/:id returns them (T9), they come from the backend seed values. */
-export const getRoomRules = (roomName: string): RoomRules => MOCK_ROOM_RULES[roomName] ?? DEFAULT_ROOM_RULES
+export const getRoomRules = (roomName: string): RoomRules => mockRoomRules(roomName)
 
 export const createBooking = (input: CreateBookingInput): Promise<BookingDetail> =>
   USE_MOCK ? mockBookings.create(input) : send(axiosInstance.post('/bookings', input))

@@ -73,6 +73,8 @@ export interface BookingDetail {
   reject_reason: string | null
   cancel_reason: string | null
   created_at: string
+  /** Who booked it; present when STAFF/ADMIN view someone else's booking */
+  user?: { display_name: string; role: UserRole }
 }
 
 export type BookingEventAction = 'CREATED' | 'UPDATED' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
@@ -83,4 +85,25 @@ export interface BookingEvent {
   by: string | null
   at: string
   note: string | null
+}
+
+/** Item of GET /api/bookings/manage (STAFF, ADMIN) */
+export interface ManageBooking {
+  id: string
+  title: string | null
+  status: BookingStatus
+  start_time: string
+  end_time: string
+  created_at: string
+  room_name: string
+  user: { display_name: string; role: UserRole }
+}
+
+/** GET /api/stats/weekly */
+export interface WeeklyStats {
+  week_start: string
+  total_bookings: number
+  total_hours: number
+  rooms: { room_name: string; bookings: number; hours: number }[]
+  top_room: string | null
 }

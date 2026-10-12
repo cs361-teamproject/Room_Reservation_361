@@ -1,6 +1,9 @@
 import type { CSSProperties } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import logo from '../assets/logo.png'
+import { USE_MOCK_API } from '../config/mock'
+import { MOCK_USERS, ROLE_LABELS, setMockRole, useMockUser } from '../mocks/session'
+import type { UserRole } from '../types/booking'
 
 interface NavItem {
   label: string
@@ -11,14 +14,18 @@ interface NavBarProps {
   items?: NavItem[]
 }
 
-// "การจองของฉัน" is shown to everyone until T3 adds login and role-based menus
-const defaultItems: NavItem[] = [
-  { label: 'All rooms', to: '/' },
-  { label: 'การจองของฉัน', to: '/my-bookings' },
-]
+// Menus per role; the role comes from the mock session until T3 adds real login
+function itemsFor(role: UserRole): NavItem[] {
+  const items: NavItem[] = [{ label: 'All rooms', to: '/' }]
+  if (role === 'STUDENT' || role === 'LECTURER') items.push({ label: 'การจองของฉัน', to: '/my-bookings' })
+  if (role === 'STAFF' || role === 'ADMIN') items.push({ label: 'Admin', to: '/admin' })
+  return items
+}
 
-export default function NavBar({ items = defaultItems }: NavBarProps) {
+export default function NavBar({ items }: NavBarProps) {
   const location = useLocation()
+  const user = useMockUser()
+  items ??= itemsFor(user.role)
 
   return (
     <header style={styles.header}>
@@ -42,6 +49,26 @@ export default function NavBar({ items = defaultItems }: NavBarProps) {
             )
           })}
         </nav>
+        <div className="navbar-user" style={styles.user}>
+          <span style={styles.userName}>{user.display_name}</span>
+          {USE_MOCK_API && (
+            <label style={styles.switcher} title="ทดลองใช้ระบบในบทบาทต่าง ๆ จนกว่าจะมีระบบ login (T3)">
+              <span style={styles.switcherTag}>Mock</span>
+              <select
+                value={user.role}
+                onChange={(e) => setMockRole(e.target.value as UserRole)}
+                style={styles.switcherSelect}
+                aria-label="สลับบทบาท (mock)"
+              >
+                {(Object.keys(MOCK_USERS) as UserRole[]).map((r) => (
+                  <option key={r} value={r}>
+                    {ROLE_LABELS[r]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
       </div>
     </header>
   )
@@ -78,4 +105,27 @@ const styles: Record<string, CSSProperties> = {
     borderBottom: '4px solid transparent',
   },
   linkActive: { borderBottomColor: '#F59E0B' },
+  user: { marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 },
+  userName: { fontSize: 15, fontWeight: 600, whiteSpace: 'nowrap' },
+  switcher: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    height: 34,
+    padding: '0 4px 0 8px',
+    borderRadius: 999,
+    border: '1.5px dashed #F59E0B',
+    background: '#FFF7ED',
+  },
+  switcherTag: { fontSize: 11, fontWeight: 700, color: '#92400E', textTransform: 'uppercase' },
+  switcherSelect: {
+    border: 'none',
+    background: 'transparent',
+    fontFamily: 'inherit',
+    fontSize: 14,
+    fontWeight: 600,
+    color: '#1a1a1a',
+    cursor: 'pointer',
+    outline: 'none',
+  },
 }

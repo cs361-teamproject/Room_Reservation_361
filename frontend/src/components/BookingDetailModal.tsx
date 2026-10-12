@@ -7,6 +7,7 @@ import { getBooking, getBookingEvents } from '../services/bookings'
 import type { BookingDetail, BookingEvent, BookingEventAction, BookingType } from '../types/booking'
 import { dateTimeLabel, fullDateLabel, timeRangeLabel } from '../utils/bkkDate'
 import { canCancel, canEdit } from '../utils/bookingRules'
+import { ROLE_LABELS } from '../mocks/session'
 
 const TYPE_LABEL: Record<BookingType, string> = {
   CLASS: 'คาบเรียน',
@@ -26,29 +27,32 @@ const EVENT_LOOK: Record<BookingEventAction, { label: string; color: string }> =
 interface Props {
   id: string
   onClose: () => void
-  onEdit: (booking: BookingDetail) => void
-  onCancel: (booking: BookingDetail) => void
+  /** Owner actions; leave out to show the booking read-only (staff view) */
+  onEdit?: (booking: BookingDetail) => void
+  onCancel?: (booking: BookingDetail) => void
 }
 
 export default function BookingDetailModal({ id, onClose, onEdit, onCancel }: Props) {
   const detail = useAsync(`detail-${id}`, () => getBooking(id))
   const events = useAsync(`events-${id}`, () => getBookingEvents(id))
   const b = detail.data
+  const showEdit = Boolean(b && onEdit && canEdit(b))
+  const showCancel = Boolean(b && onCancel && canCancel(b))
 
   return (
     <Modal
       title="รายละเอียดการจอง"
       onClose={onClose}
       footer={
-        b && (canEdit(b) || canCancel(b)) ? (
+        b && (showEdit || showCancel) ? (
           <>
-            {canEdit(b) && (
-              <button style={secondaryBtn} onClick={() => onEdit(b)}>
+            {showEdit && (
+              <button style={secondaryBtn} onClick={() => onEdit?.(b)}>
                 แก้เวลา
               </button>
             )}
-            {canCancel(b) && (
-              <button style={ghostDangerBtn} onClick={() => onCancel(b)}>
+            {showCancel && (
+              <button style={ghostDangerBtn} onClick={() => onCancel?.(b)}>
                 ยกเลิกการจอง
               </button>
             )}
@@ -71,6 +75,14 @@ export default function BookingDetailModal({ id, onClose, onEdit, onCancel }: Pr
           </div>
 
           <dl style={styles.grid}>
+            {b.user && (
+              <>
+                <dt style={styles.dt}>ผู้จอง</dt>
+                <dd style={styles.dd}>
+                  {b.user.display_name} ({ROLE_LABELS[b.user.role]})
+                </dd>
+              </>
+            )}
             <dt style={styles.dt}>วันที่</dt>
             <dd style={styles.dd}>{fullDateLabel(b.start_time)}</dd>
             <dt style={styles.dt}>เวลา</dt>

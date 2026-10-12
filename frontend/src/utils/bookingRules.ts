@@ -17,3 +17,5 @@ export const canEdit = (b: { status: string; start_time: string }) =>
 /** Same conditions as POST /bookings/:id/cancel: PENDING or APPROVED and not started */
 export const canCancel = (b: { status: string; start_time: string }) =>
   (b.status === 'PENDING' || b.status === 'APPROVED') && Date.parse(b.start_time) > Date.now()
+
+export const hasStarted = (b: { start_time: string }) => Date.parse(b.start_time) <= Date.now()

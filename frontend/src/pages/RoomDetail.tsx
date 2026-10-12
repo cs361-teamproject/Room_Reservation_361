@@ -9,7 +9,7 @@ import BookingFormModal from '../components/BookingFormModal'
 import { rolesLabel } from '../utils/bookingRules'
 import { useToast } from '../components/Toast'
 import { disabledBtn, primaryBtn } from '../components/buttons'
-import { MOCK_USER } from '../mocks/bookings'
+import { useMockUser } from '../mocks/session'
 import { getRoomRules } from '../services/bookings'
 import { useAsync } from '../hooks/useAsync'
 import { getRoom } from '../services/rooms'
@@ -27,6 +27,7 @@ export default function RoomDetail() {
   const navigate = useNavigate()
   const { data: room, error, loading } = useAsync(id, () => getRoom(id))
   const [booking, setBooking] = useState(false)
+  const user = useMockUser()
   const { toast, show } = useToast()
 
   if (loading) {
@@ -49,11 +50,11 @@ export default function RoomDetail() {
 
   const status = STATUS_TAG[room.status] ?? { label: room.status, color: '#6b6b6b' }
   const rules = getRoomRules(room.name)
-  // Until T3 brings login, the user is the mock student (see mocks/bookings.ts)
+  // Until T3 brings login, the user comes from the NavBar role switcher (mocks/session.ts)
   const blockedReason =
     room.status !== 'AVAILABLE'
       ? 'ห้องนี้ปิดปรับปรุง ยังจองไม่ได้'
-      : !rules.allowed_roles.includes(MOCK_USER.role)
+      : !rules.allowed_roles.includes(user.role)
         ? `ห้องนี้จองได้เฉพาะ${rolesLabel(rules.allowed_roles)}`
         : null
 
