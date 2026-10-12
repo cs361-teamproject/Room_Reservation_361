@@ -78,3 +78,29 @@ curl http://roomres.execute-api.localhost.localstack.cloud:4566/dev/api/health
 cd backend-lambda
 npm run db:fresh    
 ```
+
+## 5. ทดสอบ API ที่ต้อง login (ตอน local)
+
+ตอน `STAGE=local` (dev server และ LocalStack) ใส่ header `X-Dev-User: <username>` แทนการ login ได้ ส่วนบน AWS header นี้จะถูกเมิน
+รายละเอียดและวิธีใช้ใน route ดูที่ [auth-dev-guide.md](auth-dev-guide.md)
+
+| username | role |
+|---|---|
+| `6709616541`, `6709000002` | STUDENT |
+| `lecturer` | LECTURER |
+| `staff` | STAFF |
+| `admin` | ADMIN |
+
+```bash
+curl -X POST http://localhost:3000/api/bookings \
+  -H 'Content-Type: application/json' -H 'X-Dev-User: 6709616541' \
+  -d '{"room_id":"<id จาก GET /api/rooms>","start_time":"2026-12-01T10:00:00+07:00","end_time":"2026-12-01T12:00:00+07:00","title":"ประชุมกลุ่ม"}'
+```
+
+ชุดทดสอบการจอง (401/403/404/400/409/201 และยิงจองช่องเดียวกันพร้อมกัน 10 ครั้ง) ลบข้อมูลที่สร้างเองหลังรันเสร็จ:
+
+```bash
+cd backend-lambda
+npm run test:bookings   # dev server ต้องรันอยู่ (npm run dev)
+API_URL=http://roomres.execute-api.localhost.localstack.cloud:4566/dev/api npm run test:bookings   # LocalStack
+```
