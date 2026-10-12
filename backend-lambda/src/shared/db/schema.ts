@@ -2,10 +2,12 @@
 // so table/column/index names match the existing database exactly.
 // From here on Drizzle owns the schema: edit this file, then `npm run db:generate`.
 import { randomUUID } from 'node:crypto';
-import { foreignKey, integer, pgEnum, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { check, foreignKey, index, integer, pgEnum, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
-export const userRole = pgEnum('UserRole', ['STUDENT', 'ADMIN']);
+export const USER_ROLES = ['STUDENT', 'LECTURER', 'STAFF', 'ADMIN'] as const;
+export type UserRole = (typeof USER_ROLES)[number];
+export const userRole = pgEnum('UserRole', ['STUDENT', 'ADMIN', 'LECTURER', 'STAFF']);
 // Whether the room can be booked at all (AVAILABLE = open, MAINTENANCE = closed).
 // Free/busy for a time slot comes from Booking, not from this column.
 // RESERVED is unused: kept only because Postgres cannot drop an enum value easily.
@@ -14,6 +16,7 @@ export const roomSize = pgEnum('RoomSize', ['SMALL', 'MEDIUM', 'LARGE']);
 export const roomType = pgEnum('RoomType', ['LAB', 'LECTURE', 'MEETING', 'COWORKING']);
 export const bookingType = pgEnum('BookingType', ['CLASS', 'SCHEDULE', 'SPECIAL_EVENT', 'STUDENT_BOOKING']);
 export const bookingStatus = pgEnum('BookingStatus', ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']);
+export const bookingEventAction = pgEnum('BookingEventAction', ['CREATED', 'UPDATED', 'APPROVED', 'REJECTED', 'CANCELLED']);
 
 const id = () => text('id').primaryKey().$defaultFn(() => randomUUID());
 const ts = (name: string) => timestamp(name, { precision: 3, mode: 'date', withTimezone: true });
@@ -39,15 +42,23 @@ export const users = pgTable(
   'User',
   {
     id: id(),
+    // Student/staff ID; the same value is the Cognito username (`cognito:username` claim)
     username: text('username').notNull(),
-    passwordHash: text('password_hash').notNull(),
+    // Unused since login moved to Cognito; kept nullable for rows created before V3
+    passwordHash: text('password_hash'),
     role: userRole('role').default('STUDENT').notNull(),
     email: text('email'),
+    displayName: text('display_name'),
+    // Filled on first login, links the row to its Cognito user
+    cognitoSub: text('cognito_sub'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     deletedAt: ts('deleted_at'),
   },
-  (t) => [uniqueIndex('User_username_key').using('btree', t.username.asc().nullsLast().op('text_ops'))],
+  (t) => [
+    uniqueIndex('User_username_key').using('btree', t.username.asc().nullsLast().op('text_ops')),
+    uniqueIndex('User_cognito_sub_key').on(t.cognitoSub),
+  ],
 );
 
 export const rooms = pgTable(
@@ -63,8 +74,23 @@ export const rooms = pgTable(
     updatedAt: updatedAt(),
     deletedAt: ts('deleted_at'),
     roomType: roomType('room_type').default('LECTURE').notNull(),
+    // Booking rules, editable per room by ADMIN
+    maxHours: integer('max_hours').default(2).notNull(),
+    // text[] rather than UserRole[]: a migration cannot use enum values added in the same transaction
+    allowedRoles: text('allowed_roles')
+      .array()
+      .$type<UserRole[]>()
+      .default(sql`ARRAY['STUDENT', 'LECTURER']::text[]`)
+      .notNull(),
   },
-  (t) => [uniqueIndex('Room_room_name_key').using('btree', t.roomName.asc().nullsLast().op('text_ops'))],
+  (t) => [
+    uniqueIndex('Room_room_name_key').using('btree', t.roomName.asc().nullsLast().op('text_ops')),
+    check('Room_max_hours_check', sql`${t.maxHours} BETWEEN 1 AND 12`),
+    check(
+      'Room_allowed_roles_check',
+      sql`cardinality(${t.allowedRoles}) >= 1 AND ${t.allowedRoles} <@ ARRAY['STUDENT', 'LECTURER', 'STAFF', 'ADMIN']::text[]`,
+    ),
+  ],
 );
 
 export const facilities = pgTable(
@@ -142,8 +168,18 @@ export const bookings = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     cancelledAt: ts('cancelled_at'),
+    // Set by STAFF on approve / reject
+    reviewedBy: text('reviewed_by'),
+    reviewedAt: ts('reviewed_at'),
+    rejectReason: text('reject_reason'),
   },
+  // The no-overlap EXCLUDE constraint (booking_no_overlap) is not expressible in Drizzle;
+  // it lives in the custom migration 0004_booking-no-overlap.sql.
   (t) => [
+    check('Booking_time_valid', sql`${t.endTime} > ${t.startTime}`),
+    foreignKey({ columns: [t.reviewedBy], foreignColumns: [users.id], name: 'Booking_reviewed_by_fkey' })
+      .onUpdate('cascade')
+      .onDelete('set null'),
     foreignKey({ columns: [t.userId], foreignColumns: [users.id], name: 'Booking_user_id_fkey' })
       .onUpdate('cascade')
       .onDelete('cascade'),
@@ -153,5 +189,28 @@ export const bookings = pgTable(
     foreignKey({ columns: [t.roomId], foreignColumns: [rooms.id], name: 'Booking_room_id_fkey' })
       .onUpdate('cascade')
       .onDelete('restrict'),
+  ],
+);
+
+// Timeline of a booking: one row per state change, written in the same transaction as the change
+export const bookingEvents = pgTable(
+  'BookingEvent',
+  {
+    id: id(),
+    bookingId: text('booking_id').notNull(),
+    // Null when the user was deleted, or for changes made by the system
+    actorId: text('actor_id'),
+    action: bookingEventAction('action').notNull(),
+    note: text('note'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('BookingEvent_booking_id_created_at_idx').on(t.bookingId, t.createdAt),
+    foreignKey({ columns: [t.bookingId], foreignColumns: [bookings.id], name: 'BookingEvent_booking_id_fkey' })
+      .onUpdate('cascade')
+      .onDelete('cascade'),
+    foreignKey({ columns: [t.actorId], foreignColumns: [users.id], name: 'BookingEvent_actor_id_fkey' })
+      .onUpdate('cascade')
+      .onDelete('set null'),
   ],
 );

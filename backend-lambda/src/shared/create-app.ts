@@ -4,6 +4,7 @@ import type { LambdaContext, LambdaEvent } from 'hono/aws-lambda';
 import { cors } from 'hono/cors';
 import { HTTPException } from 'hono/http-exception';
 import { logger } from 'hono/logger';
+import type { AuthUser } from './auth';
 import { getEnv } from './env';
 import { fromDbError, HttpError } from './http/errors';
 import { errorResponse } from './http/response';
@@ -11,7 +12,8 @@ import { errorResponse } from './http/response';
 export type AppEnv = {
   // Present when invoked through Lambda; undefined in the local dev server
   Bindings: { event?: LambdaEvent; lambdaContext?: LambdaContext };
-  Variables: { requestId: string };
+  // `user` is set by requireAuth() (shared/auth)
+  Variables: { requestId: string; user?: AuthUser };
 };
 
 /**
@@ -33,7 +35,7 @@ export function createApp(basePath: `/${string}`) {
     cors({
       origin: (origin) => (getEnv().ALLOWED_ORIGINS.includes(origin) ? origin : null),
       allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-      allowHeaders: ['Content-Type', 'Authorization'],
+      allowHeaders: ['Content-Type', 'Authorization', 'X-Dev-User'],
       credentials: true,
     }),
   );

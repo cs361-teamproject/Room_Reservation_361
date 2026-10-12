@@ -34,7 +34,6 @@
     "@aws-sdk/s3-request-presigner": "^3.1134.0",
     "@hono/node-server": "^2.1.1",
     "@hono/zod-validator": "^0.9.1",
-    "bcryptjs": "^3.0.3",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.13.8",
     "postgres": "^3.4.9",

@@ -9,6 +9,8 @@ export const schema = { ...tables, ...relations };
 const createDb = (sql: postgres.Sql) => drizzle(sql, { schema });
 
 export type Db = ReturnType<typeof createDb>;
+/** The `tx` handed to `db.transaction(async (tx) => ...)` */
+export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 let db: Db | undefined;
 

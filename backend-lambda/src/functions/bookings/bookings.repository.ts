@@ -1,6 +1,6 @@
 import { and, asc, eq, gt, inArray, lt } from 'drizzle-orm';
-import { getDb } from '../../shared/db/client';
-import { bookings, rooms } from '../../shared/db/schema';
+import { type Db, getDb, type Tx } from '../../shared/db/client';
+import { bookingEvents, bookings, rooms } from '../../shared/db/schema';
 
 export interface BookingFilters {
   /** Start of range (inclusive boundary): bookings with end_time > fromEdge */
@@ -46,3 +46,16 @@ export async function findBookingsInRange(filters: BookingFilters) {
 }
 
 export type BookingRow = Awaited<ReturnType<typeof findBookingsInRange>>[number];
+
+export type BookingEventAction = (typeof bookingEvents.$inferInsert)['action'];
+
+/**
+ * Appends one row to a booking's timeline. Pass the transaction that changes the booking,
+ * so the change and its event are committed (or rolled back) together.
+ */
+export async function recordEvent(
+  tx: Db | Tx,
+  event: { bookingId: string; actorId: string | null; action: BookingEventAction; note?: string | null },
+) {
+  await tx.insert(bookingEvents).values({ ...event, note: event.note ?? null });
+}
