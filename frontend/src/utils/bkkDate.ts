@@ -61,3 +61,23 @@ export interface TimeSlot {
 
 /** ISO 8601 with the Bangkok offset, e.g. "2026-10-05T09:00:00+07:00" */
 export const bkkIso = (ymd: string, min: number): string => `${ymd}T${formatMinutes(min)}:00+07:00`
+
+/** e.g. "จ 2 พ.ย. 2569" for an ISO timestamp (Buddhist year) */
+export function fullDateLabel(iso: string): string {
+  const ymd = toYmd(Date.parse(iso))
+  return `${shortDateLabel(ymd)} ${Number(ymd.slice(0, 4)) + 543}`
+}
+
+/** "10:00–12:00" for two ISO timestamps on the same Bangkok day */
+export function timeRangeLabel(startIso: string, endIso: string): string {
+  const ymd = toYmd(Date.parse(startIso))
+  return `${formatMinutes(minutesInDay(Date.parse(startIso), ymd))}–${formatMinutes(minutesInDay(Date.parse(endIso), ymd))}`
+}
+
+/** e.g. "12 ต.ค. 14:05" for event timestamps */
+export function dateTimeLabel(iso: string): string {
+  const ms = Date.parse(iso)
+  const ymd = toYmd(ms)
+  const [, m, d] = ymd.split('-').map(Number)
+  return `${d} ${MONTHS_TH[m - 1]} ${formatMinutes(Math.floor(minutesInDay(ms, ymd)))}`
+}

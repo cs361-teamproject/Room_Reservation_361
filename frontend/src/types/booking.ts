@@ -20,3 +20,90 @@ export interface DayBlock {
   lane: number
   lanes: number
 }
+
+export type UserRole = 'STUDENT' | 'LECTURER' | 'STAFF' | 'ADMIN'
+
+/** Booking rules of one room (GET /api/rooms/:id once T9 adds them) */
+export interface RoomRules {
+  max_hours: number
+  allowed_roles: UserRole[]
+}
+
+/** Body of POST /api/bookings. Times are ISO strings with offset. */
+export interface CreateBookingInput {
+  room_id: string
+  start_time: string
+  end_time: string
+  title?: string
+}
+
+/** Body of PATCH /api/bookings/:id */
+export interface UpdateBookingTimeInput {
+  start_time: string
+  end_time: string
+}
+
+export type MyBookingsScope = 'upcoming' | 'past' | 'all'
+
+/** Item of GET /api/bookings/mine */
+export interface MyBooking {
+  id: string
+  room_name: string
+  start_time: string
+  end_time: string
+  status: BookingStatus
+}
+
+export interface Page<T> {
+  items: T[]
+  page: number
+  limit: number
+  total: number
+}
+
+/** GET /api/bookings/:id (owner view) */
+export interface BookingDetail {
+  id: string
+  title: string | null
+  booking_type: BookingType
+  status: BookingStatus
+  start_time: string
+  end_time: string
+  room: { id: string; room_name: string }
+  reject_reason: string | null
+  cancel_reason: string | null
+  created_at: string
+  /** Who booked it; present when STAFF/ADMIN view someone else's booking */
+  user?: { display_name: string; role: UserRole }
+}
+
+export type BookingEventAction = 'CREATED' | 'UPDATED' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
+
+/** Item of GET /api/bookings/:id/events */
+export interface BookingEvent {
+  action: BookingEventAction
+  by: string | null
+  at: string
+  note: string | null
+}
+
+/** Item of GET /api/bookings/manage (STAFF, ADMIN) */
+export interface ManageBooking {
+  id: string
+  title: string | null
+  status: BookingStatus
+  start_time: string
+  end_time: string
+  created_at: string
+  room_name: string
+  user: { display_name: string; role: UserRole }
+}
+
+/** GET /api/stats/weekly */
+export interface WeeklyStats {
+  week_start: string
+  total_bookings: number
+  total_hours: number
+  rooms: { room_name: string; bookings: number; hours: number }[]
+  top_room: string | null
+}

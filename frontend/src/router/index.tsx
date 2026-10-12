@@ -1,8 +1,13 @@
-import { createBrowserRouter } from 'react-router-dom'
+import { createBrowserRouter, Navigate } from 'react-router-dom'
 import MainLayout from '../layouts/MainLayout'
+import AdminLayout from '../layouts/AdminLayout'
 import Rooms from '../pages/Rooms'
 import RoomDetail from '../pages/RoomDetail'
-import AdminConsole from '../pages/AdminConsole'
+import MyBookings from '../pages/MyBookings'
+import AdminBookings from '../pages/admin/AdminBookings'
+import AdminRooms from '../pages/admin/AdminRooms'
+import AdminStats from '../pages/admin/AdminStats'
+import RequireRole from './RequireRole'
 
 export const router = createBrowserRouter([
   {
@@ -18,8 +23,35 @@ export const router = createBrowserRouter([
         element: <RoomDetail />,
       },
       {
-        path: 'admin/console',
-        element: <AdminConsole />,
+        path: 'my-bookings',
+        element: (
+          <RequireRole roles={['STUDENT', 'LECTURER']}>
+            <MyBookings />
+          </RequireRole>
+        ),
+      },
+      {
+        path: 'admin',
+        element: (
+          <RequireRole roles={['STAFF', 'ADMIN']}>
+            <AdminLayout />
+          </RequireRole>
+        ),
+        children: [
+          { index: true, element: <Navigate to="bookings" replace /> },
+          // Old V2 placeholder URL
+          { path: 'console', element: <Navigate to="/admin/bookings" replace /> },
+          { path: 'bookings', element: <AdminBookings /> },
+          { path: 'rooms', element: <AdminRooms /> },
+          {
+            path: 'stats',
+            element: (
+              <RequireRole roles={['ADMIN']}>
+                <AdminStats />
+              </RequireRole>
+            ),
+          },
+        ],
       },
     ],
   },
