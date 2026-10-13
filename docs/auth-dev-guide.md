@@ -1,19 +1,24 @@
 # Auth ใน backend: `requireAuth`, `requireRole` และ `X-Dev-User`
 
-เอกสารนี้อธิบายวิธีกันสิทธิ์ของ route ใน `backend-lambda` และวิธีทดสอบ API ที่ต้อง login ตอนที่ Cognito (T1/T2) ยังต่อเข้ากับ backend ไม่เสร็จ
+เอกสารนี้อธิบายวิธีกันสิทธิ์ของ route ใน `backend-lambda` ทั้งบน AWS (Cognito, PR #140) และตอน local ที่ใช้ header `X-Dev-User` แทนการ login
 
 ## ภาพรวม
 
 ```
                     ┌── บน AWS ──────────────────────────────────────────────┐
-Frontend ──token──▶ │ API Gateway (Cognito authorizer ตรวจ token)  ──▶  Lambda │  ← T2 กำลังทำ
+Frontend ──token──▶ │ API Gateway (Cognito authorizer ตรวจ token)  ──▶  Lambda │  ← อ่าน cognito:username
                     └────────────────────────────────────────────────────────┘
                     ┌── ตอน local (npm run dev / LocalStack) ─────────────────┐
-curl/Postman ──X-Dev-User: 6709616541──▶ Lambda / dev server                │  ← ใช้ได้ตอนนี้
+curl/Postman ──X-Dev-User: 6709616541──▶ Lambda / dev server                │  ← ไม่ต้องมี token
                     └────────────────────────────────────────────────────────┘
 ```
 
-ทั้งสองทางไปจบที่ middleware ตัวเดียวกันใน [`src/shared/auth/index.ts`](../backend-lambda/src/shared/auth/index.ts) ดังนั้น**โค้ด route ไม่ต้องรู้ว่าผู้ใช้ login มาทางไหน** และไม่ต้องรอ T2 เสร็จก่อนถึงจะเขียน route ได้
+ทั้งสองทางไปจบที่ middleware ตัวเดียวกันใน [`src/shared/auth/index.ts`](../backend-lambda/src/shared/auth/index.ts) ดังนั้น**โค้ด route ไม่ต้องรู้ว่าผู้ใช้ login มาทางไหน**
+
+`callerUsername()` หาผู้เรียกตามลำดับนี้
+1. `cognito:username` จาก `event.requestContext.authorizer.claims` ซึ่ง API Gateway ใส่ให้หลังตรวจ token แล้ว ถ้ามีจะใช้ค่านี้ก่อนเสมอ
+2. header `X-Dev-User` เฉพาะเมื่อ `STAGE=local`
+3. ไม่มีทั้งสองอย่าง → **401**
 
 ## มีอะไรให้ใช้บ้าง
 
@@ -42,7 +47,26 @@ app.get('/manage', requireAuth(), requireRole('STAFF', 'ADMIN'), async (c) => { 
 **กฎที่ต้องทำตาม**
 - ใช้ `user.id` จาก `c.get('user')` เป็นเจ้าของข้อมูลเสมอ **ห้ามรับ `user_id` จาก body หรือ query** ไม่งั้นคนอื่นจะส่ง id ของเพื่อนมาแทนได้
 - ใส่ `requireAuth()` **ก่อน** `requireRole()` เสมอ
-- route ที่เป็น public (เช่น `GET /api/rooms`) ไม่ต้องใส่อะไร
+- route ที่เป็น public (เช่น `GET /api/rooms`) ไม่ต้องใส่อะไร แต่**ต้องเปิดใน `template.yaml` ด้วย** (ดูหัวข้อถัดไป)
+
+## บน AWS: เส้นไหนต้องมี token
+
+`template.yaml` ตั้ง `DefaultAuthorizer: CognitoAuthorizer` ไว้ **ทุกเส้นต้องมี ID token** ยกเว้นเส้นที่ตั้ง `Auth: Authorizer: NONE` ไว้
+
+| ไม่ต้อง login | ต้อง login |
+|---|---|
+| `GET /api/health` | `POST/PATCH/PUT/DELETE` ทุกเส้น |
+| `GET /api/rooms`, `GET /api/rooms/*` | `GET /api/bookings/*` (เช่น `/mine`, `/:id`) |
+| `GET /api/facilities`, `GET /api/facilities/*` | `GET /api/users/me` |
+| `GET /api/bookings` (ตารางห้อง) | |
+| `OPTIONS` ทุกเส้น (CORS preflight) | |
+
+- ไม่มี token หรือ token ผิด API Gateway ตอบ **401 เอง request ไม่ถึง Lambda**
+- **เพิ่มเส้น GET ใหม่ที่ต้องเป็น public ต้องเพิ่ม event `Auth: NONE` ใน `template.yaml`** ไม่งั้นบน AWS จะได้ 401 ทั้งที่ local ใช้ได้ (LocalStack และ dev server ไม่มี authorizer)
+- frontend ส่ง **ID token** (ไม่ใช่ access token) ใน header `Authorization`
+
+### `GET /api/users/me`
+คืนข้อมูลผู้ที่ login อยู่ `{ id, username, display_name, role }` frontend ใช้เส้นนี้หา role หลัง login
 
 ## `X-Dev-User` คืออะไร
 
@@ -54,17 +78,21 @@ X-Dev-User: 6709616541
 
 - ใช้ได้**เฉพาะเมื่อ `STAGE=local`** คือ `npm run dev` และ LocalStack (`FN_ENV_STAGE=local` ใน `infra/env/local.env`)
 - บน AWS (`STAGE=dev`/`prod`) header นี้**ถูกเมินทั้งหมด** ต้องใช้ token จาก Cognito เท่านั้น จึงไม่เป็นช่องโหว่ตอน deploy
-- พอ T2 เสร็จ จะแก้แค่ฟังก์ชัน `callerUsername()` ในไฟล์เดียว ให้ไปอ่าน `cognito:username` จาก API Gateway ส่วน route ทุกตัวไม่ต้องแก้
+- ถ้า request มี token จาก Cognito ด้วย ระบบใช้ token ก่อน header นี้
 
 ### ผู้ใช้ที่มีใน seed
 
-| `X-Dev-User` | role | ใช้ทดสอบ |
-|---|---|---|
-| `6709616541` | STUDENT | จอง / ดู / ยกเลิกของตัวเอง |
-| `6709000002` | STUDENT | นักศึกษาคนที่ 2 ไว้เช็กว่าแก้หรือดูของคนอื่นไม่ได้ |
-| `lecturer` | LECTURER | จองห้อง LAB ได้ |
-| `staff` | STAFF | อนุมัติ / ปฏิเสธ |
-| `admin` | ADMIN | จัดการห้อง กติกา สถิติ |
+| `X-Dev-User` | role | มีใน Cognito | ใช้ทดสอบ |
+|---|---|:-:|---|
+| `6709616541` | STUDENT | ✅ | จอง / ดู / ยกเลิกของตัวเอง |
+| `6709000002` | STUDENT | ❌ ยังไม่มี | นักศึกษาคนที่ 2 ไว้เช็กว่าแก้หรือดูของคนอื่นไม่ได้ |
+| `lecturer` | LECTURER | ✅ | จองห้อง LAB ได้ |
+| `staff` | STAFF | ✅ | อนุมัติ / ปฏิเสธ |
+| `admin` | ADMIN | ✅ | จัดการห้อง กติกา สถิติ |
+
+- username ใน Cognito ต้อง**ตรงกับคอลัมน์ `username` ในตาราง `User`** เพราะ backend ใช้ `cognito:username` หาแถวในตาราง ถ้าไม่ตรงจะได้ 403 "This account is not registered in the system"
+- user pool ให้ login ด้วย username หรืออีเมลก็ได้ (อีเมลเป็น alias) แต่ใน token `cognito:username` เป็น username เสมอ
+- เพิ่มผู้ใช้ใหม่ต้องเพิ่มทั้งใน Cognito และในตาราง `User` (role กำหนดในตาราง `User` ไม่ใช่ใน Cognito)
 
 ถ้า DB ยังไม่มีผู้ใช้ชุดนี้ ให้รัน `npm run db:fresh` ในโฟลเดอร์ `backend-lambda` (คำสั่งนี้ล้างข้อมูลใน DB local)
 
