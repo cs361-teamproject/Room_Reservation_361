@@ -26,7 +26,7 @@ Parameters:
     Description: Base URL that room photo object keys are appended to.
   CognitoUserPoolArn:
     Type: String
-    Default: arn:aws:cognito-idp:ap-southeast-1:568318158381:userpool/ap-southeast-1_cKRx21D0U
+    Default: arn:aws:cognito-idp:us-east-1:568318158381:userpool/us-east-1_IRgcDe04c
     Description: Cognito user pool whose ID tokens the API accepts.
 
 Globals:
