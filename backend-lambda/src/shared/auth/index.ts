@@ -24,7 +24,13 @@ export interface AuthUser {
  * header stands in for a login. It is ignored on every other stage.
  */
 function callerUsername(c: Context<AppEnv>): string | undefined {
-  // TODO(T2): return claims['cognito:username'] from c.env?.event?.requestContext.authorizer when present
+  const requestContext = c.env?.event?.requestContext;
+  if (requestContext && 'authorizer' in requestContext) {
+    const { claims } = requestContext.authorizer as { claims?: Record<string, string> };
+    const username = claims?.['cognito:username'];
+    if (username) return username;
+  }
+
   if (getEnv().STAGE === 'local') return c.req.header('X-Dev-User') || undefined;
   return undefined;
 }
