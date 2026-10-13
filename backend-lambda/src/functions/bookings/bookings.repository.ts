@@ -1,6 +1,6 @@
-import { and, asc, eq, gt, inArray, lt } from 'drizzle-orm';
-import { getDb } from '../../shared/db/client';
-import { bookings, rooms } from '../../shared/db/schema';
+import { and, asc, eq, gt, inArray, isNull, lt } from 'drizzle-orm';
+import { type Db, getDb, type Tx } from '../../shared/db/client';
+import { bookingEvents, bookings, rooms } from '../../shared/db/schema';
 
 export interface BookingFilters {
   /** Start of range (inclusive boundary): bookings with end_time > fromEdge */
@@ -46,3 +46,40 @@ export async function findBookingsInRange(filters: BookingFilters) {
 }
 
 export type BookingRow = Awaited<ReturnType<typeof findBookingsInRange>>[number];
+
+/** The room fields POST /bookings checks its rules against; undefined for a missing or deleted room. */
+export async function findRoomForBooking(tx: Db | Tx, roomId: string) {
+  const [room] = await tx
+    .select({
+      id: rooms.id,
+      roomName: rooms.roomName,
+      status: rooms.status,
+      maxHours: rooms.maxHours,
+      allowedRoles: rooms.allowedRoles,
+    })
+    .from(rooms)
+    .where(and(eq(rooms.id, roomId), isNull(rooms.deletedAt)))
+    .limit(1);
+  return room;
+}
+
+export type RoomForBooking = NonNullable<Awaited<ReturnType<typeof findRoomForBooking>>>;
+
+/** Fails with SQLSTATE 23P01 (booking_no_overlap) when the slot is taken; the caller's transaction then rolls back. */
+export async function insertBooking(tx: Db | Tx, values: typeof bookings.$inferInsert) {
+  const [booking] = await tx.insert(bookings).values(values).returning();
+  return booking;
+}
+
+export type BookingEventAction = (typeof bookingEvents.$inferInsert)['action'];
+
+/**
+ * Appends one row to a booking's timeline. Pass the transaction that changes the booking,
+ * so the change and its event are committed (or rolled back) together.
+ */
+export async function recordEvent(
+  tx: Db | Tx,
+  event: { bookingId: string; actorId: string | null; action: BookingEventAction; note?: string | null },
+) {
+  await tx.insert(bookingEvents).values({ ...event, note: event.note ?? null });
+}

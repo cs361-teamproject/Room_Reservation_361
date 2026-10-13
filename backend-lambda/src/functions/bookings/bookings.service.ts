@@ -1,5 +1,16 @@
-import { type BookingRow, findBookingsInRange } from './bookings.repository';
-import type { ListQuery } from './bookings.schema';
+import type { AuthUser } from '../../shared/auth';
+import { getDb } from '../../shared/db/client';
+import type { UserRole } from '../../shared/db/schema';
+import { badRequest, forbidden, notFound } from '../../shared/http/errors';
+import {
+  type BookingRow,
+  findBookingsInRange,
+  findRoomForBooking,
+  insertBooking,
+  recordEvent,
+  type RoomForBooking,
+} from './bookings.repository';
+import type { CreateBookingBody, ListQuery } from './bookings.schema';
 
 // Asia/Bangkok is UTC+7, no DST — offset is always +07:00
 const BKK_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -36,6 +47,31 @@ const toResponse = (row: BookingRow) => ({
   },
 });
 
+const HOUR_MS = 60 * 60 * 1000;
+
+const ROLE_LABELS: Record<UserRole, string> = {
+  STUDENT: 'นักศึกษา',
+  LECTURER: 'อาจารย์',
+  STAFF: 'เจ้าหน้าที่',
+  ADMIN: 'ผู้ดูแลระบบ',
+};
+
+// Only STUDENT and LECTURER reach create() (requireRole in app.ts)
+const BOOKING_TYPE_BY_ROLE = { STUDENT: 'STUDENT_BOOKING', LECTURER: 'CLASS' } as const;
+
+/** The room's booking rules: every broken one, so the user can fix them all at once. */
+function ruleViolations(room: RoomForBooking, start: Date, end: Date, now: Date): string[] {
+  const problems: string[] = [];
+  if (room.status !== 'AVAILABLE') problems.push('ห้องนี้ปิดปรับปรุง ยังจองไม่ได้');
+  if (start.getTime() <= now.getTime()) problems.push('start_time: ต้องเป็นเวลาในอนาคต');
+  if (end.getTime() <= start.getTime()) {
+    problems.push('end_time: ต้องอยู่หลัง start_time');
+  } else if (end.getTime() - start.getTime() > room.maxHours * HOUR_MS) {
+    problems.push(`ห้องนี้จองได้ไม่เกิน ${room.maxHours} ชั่วโมงต่อครั้ง`);
+  }
+  return problems;
+}
+
 export const bookingsService = {
   async list(query: ListQuery) {
     const rows = await findBookingsInRange({
@@ -46,5 +82,49 @@ export const bookingsService = {
     });
 
     return rows.map(toResponse);
+  },
+
+  /**
+   * Books a room as PENDING. Checks run in the order the API documents (404, 403, 400);
+   * an overlapping slot is left to the booking_no_overlap constraint, which makes the
+   * insert fail with 23P01 (answered 409) even when two requests race for the same slot.
+   */
+  async create(user: AuthUser, body: CreateBookingBody) {
+    const start = new Date(body.start_time);
+    const end = new Date(body.end_time);
+
+    return getDb().transaction(async (tx) => {
+      const room = await findRoomForBooking(tx, body.room_id);
+      if (!room) throw notFound('Room not found');
+
+      if (!room.allowedRoles.includes(user.role)) {
+        throw forbidden(`ห้องนี้จองได้เฉพาะ${room.allowedRoles.map((r) => ROLE_LABELS[r]).join(' และ ')}`);
+      }
+
+      const problems = ruleViolations(room, start, end, new Date());
+      if (problems.length > 0) throw badRequest(problems);
+
+      const booking = await insertBooking(tx, {
+        userId: user.id,
+        roomId: room.id,
+        bookingType: BOOKING_TYPE_BY_ROLE[user.role as keyof typeof BOOKING_TYPE_BY_ROLE],
+        title: body.title ?? null,
+        startTime: start,
+        endTime: end,
+        status: 'PENDING',
+      });
+      await recordEvent(tx, { bookingId: booking.id, actorId: user.id, action: 'CREATED' });
+
+      // The caller owns this booking, so the title is shown even for STUDENT_BOOKING
+      return {
+        id: booking.id,
+        title: booking.title,
+        booking_type: booking.bookingType,
+        status: booking.status,
+        start_time: booking.startTime,
+        end_time: booking.endTime,
+        room: { id: room.id, room_name: room.roomName },
+      };
+    });
   },
 };

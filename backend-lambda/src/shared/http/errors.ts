@@ -10,6 +10,8 @@ export class HttpError extends Error {
 }
 
 export const badRequest = (message: string | string[]) => new HttpError(400, message);
+export const unauthorized = (message = 'Login required') => new HttpError(401, message);
+export const forbidden = (message = 'You do not have permission to do this') => new HttpError(403, message);
 export const notFound = (message: string) => new HttpError(404, message);
 export const conflict = (message: string) => new HttpError(409, message);
 export const serviceUnavailable = (message: string) => new HttpError(503, message);
@@ -63,6 +65,8 @@ export function fromDbError(err: unknown): HttpError | undefined {
         : badRequest(columns ? `${columns} refers to a record that does not exist` : 'A referenced record does not exist');
     case '23502': // not_null_violation
       return badRequest(pg.column_name ? `${pg.column_name} is required` : 'A required field is missing');
+    case '23P01': // exclusion_violation, only booking_no_overlap today
+      return conflict('ช่วงเวลานี้มีการจองแล้ว');
     case '23514': // check_violation
       return badRequest('A value is outside the allowed range');
     case '22P02': // invalid_text_representation, e.g. an unknown enum value

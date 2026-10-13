@@ -65,3 +65,15 @@ export const listQuery = z
   });
 
 export type ListQuery = z.infer<typeof listQuery>;
+
+// ISO 8601 with an offset (Z or +07:00), so the instant is unambiguous whatever TZ the Lambda runs in
+const isoDateTime = z.iso.datetime({ offset: true, error: 'Must be an ISO 8601 datetime with offset, e.g. 2026-10-20T14:00:00+07:00' });
+
+export const createBookingBody = z.object({
+  room_id: z.string({ error: 'Required' }).min(1, 'Required'),
+  start_time: isoDateTime,
+  end_time: isoDateTime,
+  title: z.string().trim().min(1, 'Must not be empty').max(200, 'Must be at most 200 characters').optional(),
+});
+
+export type CreateBookingBody = z.infer<typeof createBookingBody>;
