@@ -85,14 +85,12 @@ export async function findManagedBookings(filters: {
     .select({
       id: bookings.id,
       title: bookings.title,
-      bookingType: bookings.bookingType,
       status: bookings.status,
       startTime: bookings.startTime,
       endTime: bookings.endTime,
       createdAt: bookings.createdAt,
       displayName: users.displayName,
-      username: users.username,
-      roomId: rooms.id,
+      role: users.role,
       roomName: rooms.roomName,
     })
     .from(bookings)

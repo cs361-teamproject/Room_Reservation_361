@@ -54,13 +54,12 @@ const toResponse = (row: BookingRow) => ({
 const toManagedItem = (row: ManagedBookingRow) => ({
   id: row.id,
   title: row.title,
-  booking_type: row.bookingType,
   status: row.status,
   start_time: row.startTime,
   end_time: row.endTime,
   created_at: row.createdAt,
-  booker: { display_name: row.displayName, username: row.username },
-  room: { id: row.roomId, room_name: row.roomName },
+  room_name: row.roomName,
+  user: { display_name: row.displayName, role: row.role },
 });
 
 const toDecisionItem = (booking: { id: string; status: string; reviewedBy: string | null; reviewedAt: Date | null; rejectReason: string | null }) => ({
