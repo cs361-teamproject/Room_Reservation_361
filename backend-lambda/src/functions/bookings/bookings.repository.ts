@@ -1,6 +1,6 @@
 import { and, asc, eq, gt, inArray, isNull, lt } from 'drizzle-orm';
 import { type Db, getDb, type Tx } from '../../shared/db/client';
-import { bookingEvents, bookings, rooms } from '../../shared/db/schema';
+import { bookingEvents, bookings, rooms, users } from '../../shared/db/schema';
 
 export interface BookingFilters {
   /** Start of range (inclusive boundary): bookings with end_time > fromEdge */
@@ -82,4 +82,169 @@ export async function recordEvent(
   event: { bookingId: string; actorId: string | null; action: BookingEventAction; note?: string | null },
 ) {
   await tx.insert(bookingEvents).values({ ...event, note: event.note ?? null });
+}
+
+/** Find bookings owned by a specific user with pagination */
+export async function findMyBookings(params: {
+  userId: string;
+  scope: 'upcoming' | 'past' | 'all';
+  statuses?: Array<'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'>;
+  page: number;
+  limit: number;
+}) {
+  const { userId, scope, statuses, page, limit } = params;
+  const now = new Date();
+
+  const conditions = [eq(bookings.userId, userId)];
+
+  // Apply scope filter
+  if (scope === 'upcoming') {
+    // Not finished yet AND status is PENDING or APPROVED
+    conditions.push(gt(bookings.endTime, now));
+    conditions.push(inArray(bookings.status, ['PENDING', 'APPROVED']));
+  } else if (scope === 'past') {
+    // End time has passed
+    conditions.push(lt(bookings.endTime, now));
+  }
+  // 'all' means no time filter
+
+  // Apply status filter if provided
+  if (statuses && statuses.length > 0) {
+    conditions.push(inArray(bookings.status, statuses));
+  }
+
+  // Get total count
+  const countRows = await getDb()
+    .select({ count: bookings.id })
+    .from(bookings)
+    .where(and(...conditions));
+
+  const total = countRows.length;
+
+  // Get paginated results
+  const offset = (page - 1) * limit;
+  const rows = await getDb()
+    .select({
+      id: bookings.id,
+      roomName: rooms.roomName,
+      startTime: bookings.startTime,
+      endTime: bookings.endTime,
+      status: bookings.status,
+    })
+    .from(bookings)
+    .innerJoin(rooms, eq(bookings.roomId, rooms.id))
+    .where(and(...conditions))
+    .orderBy(asc(bookings.startTime))
+    .limit(limit)
+    .offset(offset);
+
+  return { items: rows, total };
+}
+
+/** Find a booking by ID with full details. Pass `tx` when calling from inside a transaction (the pool has only 1 connection, so reusing the pool there would deadlock). */
+export async function findBookingById(bookingId: string, db: Db | Tx = getDb()) {
+  const [booking] = await db
+    .select({
+      id: bookings.id,
+      userId: bookings.userId,
+      title: bookings.title,
+      bookingType: bookings.bookingType,
+      status: bookings.status,
+      startTime: bookings.startTime,
+      endTime: bookings.endTime,
+      rejectReason: bookings.rejectReason,
+      cancelReason: bookings.cancelReason,
+      remark: bookings.remark,
+      roomId: rooms.id,
+      roomName: rooms.roomName,
+    })
+    .from(bookings)
+    .innerJoin(rooms, eq(bookings.roomId, rooms.id))
+    .where(eq(bookings.id, bookingId))
+    .limit(1);
+
+  return booking;
+}
+
+/** Find timeline events for a booking */
+export async function findBookingEvents(bookingId: string) {
+  const events = await getDb()
+    .select({
+      action: bookingEvents.action,
+      by: users.displayName,
+      at: bookingEvents.createdAt,
+      note: bookingEvents.note,
+    })
+    .from(bookingEvents)
+    .leftJoin(users, eq(bookingEvents.actorId, users.id))
+    .where(eq(bookingEvents.bookingId, bookingId))
+    .orderBy(asc(bookingEvents.createdAt));
+
+  return events;
+}
+
+/** 
+ * Update booking times. Returns the number of rows affected.
+ * Use WHERE conditions to ensure only the owner can update and only when status is PENDING.
+ */
+export async function updateBookingTimes(
+  tx: Db | Tx,
+  params: {
+    bookingId: string;
+    userId: string;
+    startTime: Date;
+    endTime: Date;
+  }
+) {
+  const result = await tx
+    .update(bookings)
+    .set({
+      startTime: params.startTime,
+      endTime: params.endTime,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(bookings.id, params.bookingId),
+        eq(bookings.userId, params.userId),
+        eq(bookings.status, 'PENDING')
+      )
+    )
+    .returning({ id: bookings.id });
+
+  return result.length;
+}
+
+/**
+ * Cancel a booking. Returns the number of rows affected.
+ * Use WHERE conditions to ensure only the owner can cancel and only when status is PENDING or APPROVED.
+ */
+export async function cancelBooking(
+  tx: Db | Tx,
+  params: {
+    bookingId: string;
+    userId: string;
+    cancelledBy: string;
+    cancelReason: string | null;
+  }
+) {
+  const result = await tx
+    .update(bookings)
+    .set({
+      status: 'CANCELLED',
+      cancelledBy: params.cancelledBy,
+      cancelledAt: new Date(),
+      cancelReason: params.cancelReason,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(bookings.id, params.bookingId),
+        eq(bookings.userId, params.userId),
+        inArray(bookings.status, ['PENDING', 'APPROVED'])
+      )
+    )
+    .returning({ id: bookings.id, startTime: bookings.startTime });
+
+  return result;
 }
