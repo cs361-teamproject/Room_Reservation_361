@@ -1,6 +1,6 @@
-import { and, asc, eq, gt, inArray, isNull, lt } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNull, lt } from 'drizzle-orm';
 import { type Db, getDb, type Tx } from '../../shared/db/client';
-import { bookingEvents, bookings, rooms } from '../../shared/db/schema';
+import { bookingEvents, bookings, rooms, users } from '../../shared/db/schema';
 
 export interface BookingFilters {
   /** Start of range (inclusive boundary): bookings with end_time > fromEdge */
@@ -72,6 +72,59 @@ export async function insertBooking(tx: Db | Tx, values: typeof bookings.$inferI
 }
 
 export type BookingEventAction = (typeof bookingEvents.$inferInsert)['action'];
+
+/**
+ * Staff manage queue: latest bookings first with booker display name + room.
+ * Caller filters by status (default PENDING) and caps rows with limit (max 50).
+ */
+export async function findManagedBookings(filters: {
+  statuses: Array<'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'>;
+  limit: number;
+}) {
+  return getDb()
+    .select({
+      id: bookings.id,
+      title: bookings.title,
+      status: bookings.status,
+      startTime: bookings.startTime,
+      endTime: bookings.endTime,
+      createdAt: bookings.createdAt,
+      displayName: users.displayName,
+      role: users.role,
+      roomName: rooms.roomName,
+    })
+    .from(bookings)
+    .innerJoin(users, eq(bookings.userId, users.id))
+    .innerJoin(rooms, eq(bookings.roomId, rooms.id))
+    .where(inArray(bookings.status, filters.statuses))
+    .orderBy(desc(bookings.createdAt))
+    .limit(filters.limit);
+}
+
+export type ManagedBookingRow = Awaited<ReturnType<typeof findManagedBookings>>[number];
+
+/**
+ * PENDING -> APPROVED guarded by status so two staff racing on the same row
+ * leave exactly one winner (0 updated rows = already handled).
+ */
+export async function approveIfPending(tx: Db | Tx, bookingId: string, reviewerId: string) {
+  const [row] = await tx
+    .update(bookings)
+    .set({ status: 'APPROVED', reviewedBy: reviewerId, reviewedAt: new Date() })
+    .where(and(eq(bookings.id, bookingId), eq(bookings.status, 'PENDING')))
+    .returning();
+  return row;
+}
+
+/** Same guard as approve, plus the mandatory reject reason. */
+export async function rejectIfPending(tx: Db | Tx, bookingId: string, reviewerId: string, reason: string) {
+  const [row] = await tx
+    .update(bookings)
+    .set({ status: 'REJECTED', reviewedBy: reviewerId, reviewedAt: new Date(), rejectReason: reason })
+    .where(and(eq(bookings.id, bookingId), eq(bookings.status, 'PENDING')))
+    .returning();
+  return row;
+}
 
 /**
  * Appends one row to a booking's timeline. Pass the transaction that changes the booking,
