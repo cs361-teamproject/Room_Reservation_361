@@ -4,13 +4,16 @@ import type { UserRole } from '../../shared/db/schema';
 import { badRequest, forbidden, notFound } from '../../shared/http/errors';
 import {
   type BookingRow,
+  findBookingById,
+  findBookingEvents,
   findBookingsInRange,
+  findMyBookings,
   findRoomForBooking,
   insertBooking,
   recordEvent,
   type RoomForBooking,
 } from './bookings.repository';
-import type { CreateBookingBody, ListQuery } from './bookings.schema';
+import type { CreateBookingBody, ListQuery, MineQuery } from './bookings.schema';
 
 // Asia/Bangkok is UTC+7, no DST — offset is always +07:00
 const BKK_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -126,5 +129,98 @@ export const bookingsService = {
         room: { id: room.id, room_name: room.roomName },
       };
     });
+  },
+
+  /**
+   * Get bookings owned by the authenticated user with pagination
+   */
+  async getMine(user: AuthUser, query: MineQuery) {
+    const { items, total } = await findMyBookings({
+      userId: user.id,
+      scope: query.scope,
+      statuses: query.status,
+      page: query.page,
+      limit: query.limit,
+    });
+
+    return {
+      items: items.map((item) => ({
+        id: item.id,
+        room_name: item.roomName,
+        start_time: item.startTime,
+        end_time: item.endTime,
+        status: item.status,
+      })),
+      page: query.page,
+      limit: query.limit,
+      total,
+    };
+  },
+
+  /**
+   * Get full details of a booking.
+   * Returns 404 if not found or user doesn't have access.
+   */
+  async getById(user: AuthUser, bookingId: string) {
+    const booking = await findBookingById(bookingId);
+
+    if (!booking) {
+      throw notFound('Booking not found');
+    }
+
+    // Check authorization: must be owner or Staff/Admin
+    const isOwner = booking.userId === user.id;
+    const isStaffOrAdmin = user.role === 'STAFF' || user.role === 'ADMIN';
+
+    if (!isOwner && !isStaffOrAdmin) {
+      // Return 404 instead of 403 to not leak that the booking exists
+      throw notFound('Booking not found');
+    }
+
+    return {
+      id: booking.id,
+      title: booking.title,
+      booking_type: booking.bookingType,
+      status: booking.status,
+      start_time: booking.startTime,
+      end_time: booking.endTime,
+      reject_reason: booking.rejectReason,
+      cancel_reason: booking.cancelReason,
+      remark: booking.remark,
+      room: {
+        id: booking.roomId,
+        room_name: booking.roomName,
+      },
+    };
+  },
+
+  /**
+   * Get timeline events for a booking.
+   * Returns 404 if not found or user doesn't have access.
+   */
+  async getEvents(user: AuthUser, bookingId: string) {
+    const booking = await findBookingById(bookingId);
+
+    if (!booking) {
+      throw notFound('Booking not found');
+    }
+
+    // Check authorization: must be owner or Staff/Admin
+    const isOwner = booking.userId === user.id;
+    const isStaffOrAdmin = user.role === 'STAFF' || user.role === 'ADMIN';
+
+    if (!isOwner && !isStaffOrAdmin) {
+      // Return 404 instead of 403 to not leak that the booking exists
+      throw notFound('Booking not found');
+    }
+
+    const events = await findBookingEvents(bookingId);
+
+    return events.map((event) => ({
+      action: event.action,
+      by: event.by || 'System', // Fallback for deleted users or system actions
+      at: event.at,
+      note: event.note,
+    }));
   },
 };

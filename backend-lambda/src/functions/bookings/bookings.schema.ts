@@ -77,3 +77,16 @@ export const createBookingBody = z.object({
 });
 
 export type CreateBookingBody = z.infer<typeof createBookingBody>;
+
+// GET /mine query parameters
+const SCOPES = ['upcoming', 'past', 'all'] as const;
+
+export const mineQuery = z
+  .object({
+    scope: z.enum(SCOPES, { error: 'Must be one of upcoming, past, all' }).default('upcoming'),
+    status: csvStatus().optional(),
+    page: z.coerce.number().int().min(1, 'Must be at least 1').default(1),
+    limit: z.coerce.number().int().min(1, 'Must be at least 1').max(50, 'Must not exceed 50').default(10),
+  });
+
+export type MineQuery = z.infer<typeof mineQuery>;
