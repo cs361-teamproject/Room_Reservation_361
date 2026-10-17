@@ -141,9 +141,9 @@ export async function findMyBookings(params: {
   return { items: rows, total };
 }
 
-/** Find a booking by ID with full details */
-export async function findBookingById(bookingId: string) {
-  const [booking] = await getDb()
+/** Find a booking by ID with full details. Pass `tx` when calling from inside a transaction (the pool has only 1 connection, so reusing the pool there would deadlock). */
+export async function findBookingById(bookingId: string, db: Db | Tx = getDb()) {
+  const [booking] = await db
     .select({
       id: bookings.id,
       userId: bookings.userId,
@@ -181,4 +181,70 @@ export async function findBookingEvents(bookingId: string) {
     .orderBy(asc(bookingEvents.createdAt));
 
   return events;
+}
+
+/** 
+ * Update booking times. Returns the number of rows affected.
+ * Use WHERE conditions to ensure only the owner can update and only when status is PENDING.
+ */
+export async function updateBookingTimes(
+  tx: Db | Tx,
+  params: {
+    bookingId: string;
+    userId: string;
+    startTime: Date;
+    endTime: Date;
+  }
+) {
+  const result = await tx
+    .update(bookings)
+    .set({
+      startTime: params.startTime,
+      endTime: params.endTime,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(bookings.id, params.bookingId),
+        eq(bookings.userId, params.userId),
+        eq(bookings.status, 'PENDING')
+      )
+    )
+    .returning({ id: bookings.id });
+
+  return result.length;
+}
+
+/**
+ * Cancel a booking. Returns the number of rows affected.
+ * Use WHERE conditions to ensure only the owner can cancel and only when status is PENDING or APPROVED.
+ */
+export async function cancelBooking(
+  tx: Db | Tx,
+  params: {
+    bookingId: string;
+    userId: string;
+    cancelledBy: string;
+    cancelReason: string | null;
+  }
+) {
+  const result = await tx
+    .update(bookings)
+    .set({
+      status: 'CANCELLED',
+      cancelledBy: params.cancelledBy,
+      cancelledAt: new Date(),
+      cancelReason: params.cancelReason,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(bookings.id, params.bookingId),
+        eq(bookings.userId, params.userId),
+        inArray(bookings.status, ['PENDING', 'APPROVED'])
+      )
+    )
+    .returning({ id: bookings.id, startTime: bookings.startTime });
+
+  return result;
 }

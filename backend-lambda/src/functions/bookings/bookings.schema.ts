@@ -90,3 +90,18 @@ export const mineQuery = z
   });
 
 export type MineQuery = z.infer<typeof mineQuery>;
+
+// PATCH /:id - Update booking times
+export const updateBookingBody = z.object({
+  start_time: isoDateTime,
+  end_time: isoDateTime,
+});
+
+export type UpdateBookingBody = z.infer<typeof updateBookingBody>;
+
+// POST /:id/cancel - Cancel booking
+export const cancelBookingBody = z.object({
+  reason: z.string().trim().max(500, 'Must be at most 500 characters').optional(),
+});
+
+export type CancelBookingBody = z.infer<typeof cancelBookingBody>;

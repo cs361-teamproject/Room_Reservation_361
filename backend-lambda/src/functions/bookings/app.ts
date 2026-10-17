@@ -2,7 +2,7 @@ import { requireAuth, requireRole } from '../../shared/auth';
 import { createApp } from '../../shared/create-app';
 import { successResponse } from '../../shared/http/response';
 import { validate } from '../../shared/http/validate';
-import { createBookingBody, listQuery, mineQuery } from './bookings.schema';
+import { cancelBookingBody, createBookingBody, listQuery, mineQuery, updateBookingBody } from './bookings.schema';
 import { bookingsService as service } from './bookings.service';
 
 export const app = createApp('/api/bookings');
@@ -36,4 +36,18 @@ app.post('/', requireAuth(), requireRole('STUDENT', 'LECTURER'), validate('json'
   // requireAuth() guarantees the user is set
   const booking = await service.create(c.get('user')!, c.req.valid('json'));
   return c.json(successResponse(booking, 'Booking created successfully'), 201);
+});
+
+app.patch('/:id', requireAuth(), validate('json', updateBookingBody), async (c) => {
+  const user = c.get('user')!;
+  const bookingId = c.req.param('id');
+  const data = await service.update(user, bookingId, c.req.valid('json'));
+  return c.json(successResponse(data, 'Booking updated successfully'));
+});
+
+app.post('/:id/cancel', requireAuth(), validate('json', cancelBookingBody), async (c) => {
+  const user = c.get('user')!;
+  const bookingId = c.req.param('id');
+  const data = await service.cancel(user, bookingId, c.req.valid('json'));
+  return c.json(successResponse(data, 'Booking cancelled successfully'));
 });
