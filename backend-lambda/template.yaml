@@ -20,10 +20,21 @@ Parameters:
   StageName:
     Type: String
     Default: dev
+  S3BucketName:
+    Type: String
+    Default: roomreserve-images-use1
+    Description: >-
+      Bucket that room photos are uploaded to. Must be in the same region as the stack, because
+      the Lambdas reach S3 through the VPC's S3 gateway endpoint; needs a CORS rule allowing POST
+      from the frontend.
   S3PublicUrl:
     Type: String
-    Default: https://roomreserve-image-private.s3.ap-southeast-1.amazonaws.com
+    Default: https://roomreserve-images-use1.s3.us-east-1.amazonaws.com
     Description: Base URL that room photo object keys are appended to.
+  CognitoUserPoolArn:
+    Type: String
+    Default: arn:aws:cognito-idp:us-east-1:568318158381:userpool/us-east-1_IRgcDe04c
+    Description: Cognito user pool whose ID tokens the API accepts.
 
 Globals:
   Function:
@@ -40,6 +51,7 @@ Globals:
         DATABASE_URL: !Ref DatabaseUrl
         ALLOWED_ORIGINS: !Ref AllowedOrigins
         S3_PUBLIC_URL: !Ref S3PublicUrl
+        S3_BUCKET: !Ref S3BucketName
 
 Resources:
   FacilitiesApi:
@@ -48,6 +60,25 @@ Resources:
       Name: !Sub roomres-${StageName}-api
       StageName: !Ref StageName
       EndpointConfiguration: REGIONAL
+      # Every route needs a Cognito ID token unless its event sets Auth: NONE
+      Auth:
+        DefaultAuthorizer: CognitoAuthorizer
+        Authorizers:
+          CognitoAuthorizer:
+            UserPoolArn: !Ref CognitoUserPoolArn
+      # Errors API Gateway returns itself (e.g. 401 from the authorizer) never reach
+      # the Lambda's CORS middleware, so add the headers here or browsers hide the status
+      GatewayResponses:
+        DEFAULT_4XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: method.request.header.origin
+              Access-Control-Allow-Credentials: "'true'"
+        DEFAULT_5XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: method.request.header.origin
+              Access-Control-Allow-Credentials: "'true'"
 
   FacilitiesFunction:
     Type: AWS::Serverless::Function
@@ -72,6 +103,38 @@ Resources:
             RestApiId: !Ref FacilitiesApi
             Path: /api/facilities/{proxy+}
             Method: ANY
+        FacilitiesCollectionPreflight:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FacilitiesApi
+            Path: /api/facilities
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+        FacilitiesItemsPreflight:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FacilitiesApi
+            Path: /api/facilities/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+        FacilitiesCollectionRead:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FacilitiesApi
+            Path: /api/facilities
+            Method: GET
+            Auth:
+              Authorizer: NONE
+        FacilitiesItemsRead:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FacilitiesApi
+            Path: /api/facilities/{proxy+}
+            Method: GET
+            Auth:
+              Authorizer: NONE
 
   HealthFunction:
     Type: AWS::Serverless::Function
@@ -91,6 +154,8 @@ Resources:
             RestApiId: !Ref FacilitiesApi
             Path: /api/health
             Method: ANY
+            Auth:
+              Authorizer: NONE
 
   RoomsFunction:
     Type: AWS::Serverless::Function
@@ -102,6 +167,10 @@ Resources:
       Policies:
         - AWSLambdaBasicExecutionRole
         - AWSLambdaVPCAccessExecutionRole
+        # Presigning needs PutObject rights; deleting an uploaded photo needs DeleteObject.
+        # From the VPC (no NAT) DeleteObject also needs an S3 gateway VPC endpoint.
+        - S3CrudPolicy:
+            BucketName: !Ref S3BucketName
       Events:
         RoomsCollection:
           Type: Api
@@ -115,6 +184,38 @@ Resources:
             RestApiId: !Ref FacilitiesApi
             Path: /api/rooms/{proxy+}
             Method: ANY
+        RoomsCollectionPreflight:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FacilitiesApi
+            Path: /api/rooms
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+        RoomsItemsPreflight:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FacilitiesApi
+            Path: /api/rooms/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+        RoomsCollectionRead:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FacilitiesApi
+            Path: /api/rooms
+            Method: GET
+            Auth:
+              Authorizer: NONE
+        RoomsItemsRead:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FacilitiesApi
+            Path: /api/rooms/{proxy+}
+            Method: GET
+            Auth:
+              Authorizer: NONE
 
   BookingsFunction:
     Type: AWS::Serverless::Function
@@ -139,6 +240,110 @@ Resources:
             RestApiId: !Ref FacilitiesApi
             Path: /api/bookings/{proxy+}
             Method: ANY
+        BookingsCollectionPreflight:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FacilitiesApi
+            Path: /api/bookings
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+        BookingsItemsPreflight:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FacilitiesApi
+            Path: /api/bookings/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+        BookingsCollectionRead:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FacilitiesApi
+            Path: /api/bookings
+            Method: GET
+            Auth:
+              Authorizer: NONE
+
+  UsersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub roomres-users-${StageName}
+      CodeUri: dist/users/
+      Handler: index.handler
+      Description: Current user (GET /api/users/me).
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSLambdaVPCAccessExecutionRole
+      Events:
+        UsersCollection:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FacilitiesApi
+            Path: /api/users
+            Method: ANY
+        UsersItems:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FacilitiesApi
+            Path: /api/users/{proxy+}
+            Method: ANY
+        UsersCollectionPreflight:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FacilitiesApi
+            Path: /api/users
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+        UsersItemsPreflight:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FacilitiesApi
+            Path: /api/users/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+
+  StatsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub roomres-stats-${StageName}
+      CodeUri: dist/stats/
+      Handler: index.handler
+      Description: Weekly usage stats (GET /api/stats/weekly, ADMIN only).
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSLambdaVPCAccessExecutionRole
+      Events:
+        StatsCollection:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FacilitiesApi
+            Path: /api/stats
+            Method: ANY
+        StatsItems:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FacilitiesApi
+            Path: /api/stats/{proxy+}
+            Method: ANY
+        StatsCollectionPreflight:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FacilitiesApi
+            Path: /api/stats
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+        StatsItemsPreflight:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FacilitiesApi
+            Path: /api/stats/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
 
   # Not behind API Gateway. Run migrations with:
   #   aws lambda invoke --function-name roomres-migrate-<stage> --payload '{}' out.json

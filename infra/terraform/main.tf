@@ -63,8 +63,29 @@ resource "aws_security_group" "lambda_sg" {
     cidr_blocks = [var.vpc_cidr]
   }
 
+  egress {
+    description     = "Allow HTTPS to S3 through the gateway endpoint (room photos)"
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    prefix_list_ids = [aws_vpc_endpoint.s3.prefix_list_id]
+  }
+
   tags = {
     Name = "lambda-security-group"
+  }
+}
+
+# 4b. S3 gateway endpoint: Lambdas have no internet route (no NAT), so S3 calls such as
+# deleting a room photo go through this. Free, and only reaches buckets in this region.
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.${var.aws_region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = [aws_route_table.private.id]
+
+  tags = {
+    Name = "s3-gateway-endpoint"
   }
 }
 

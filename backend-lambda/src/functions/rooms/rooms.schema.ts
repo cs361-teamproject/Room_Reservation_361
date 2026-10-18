@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PHOTO_CONTENT_TYPES, PHOTO_MAX_BYTES } from '../../shared/aws/s3';
 
 export const idParam = z.object({ id: z.string().min(1) });
 
@@ -71,3 +72,60 @@ export const listQuery = z
   });
 
 export type ListQuery = z.infer<typeof listQuery>;
+
+// ---- T9: rooms CRUD + rules ----
+const ROOM_SIZES = ['SMALL', 'MEDIUM', 'LARGE'] as const;
+const ROOM_STATUSES = ['AVAILABLE', 'MAINTENANCE'] as const;
+const BOOKABLE_ROLES = ['STUDENT', 'LECTURER'] as const;
+
+const roomName = z.string().trim().min(1, 'room_name is required').max(100, 'room_name must be at most 100 characters');
+const seatCapacity = z.coerce.number().int().min(1, 'seat_capacity must be at least 1').max(1000);
+
+export const createRoomBody = z.object({
+  room_name: roomName,
+  description: z.string().trim().max(2000).nullable().optional(),
+  room_type: z.enum(ROOM_TYPES, { error: 'Must be one of LAB, LECTURE, MEETING, COWORKING' }),
+  size: z.enum(ROOM_SIZES, { error: 'Must be one of SMALL, MEDIUM, LARGE' }),
+  seat_capacity: seatCapacity,
+  status: z.enum(ROOM_STATUSES, { error: 'Must be one of AVAILABLE, MAINTENANCE' }).default('AVAILABLE'),
+});
+
+export type CreateRoomBody = z.infer<typeof createRoomBody>;
+
+export const updateRoomBody = z
+  .object({
+    room_name: roomName.optional(),
+    description: z.string().trim().max(2000).nullable().optional(),
+    room_type: z.enum(ROOM_TYPES, { error: 'Must be one of LAB, LECTURE, MEETING, COWORKING' }).optional(),
+    size: z.enum(ROOM_SIZES, { error: 'Must be one of SMALL, MEDIUM, LARGE' }).optional(),
+    seat_capacity: seatCapacity.optional(),
+    status: z.enum(ROOM_STATUSES, { error: 'Must be one of AVAILABLE, MAINTENANCE' }).optional(),
+  })
+  .refine((b) => Object.keys(b).length > 0, { message: 'At least one field is required', path: [] });
+
+export type UpdateRoomBody = z.infer<typeof updateRoomBody>;
+
+export const roomRulesBody = z.object({
+  max_hours: z.coerce.number().int().min(1).max(12),
+  allowed_roles: z.array(z.enum(BOOKABLE_ROLES, { error: 'Must be one of STUDENT, LECTURER' })).min(1, 'allowed_roles must have at least 1 role'),
+});
+
+export type RoomRulesBody = z.infer<typeof roomRulesBody>;
+
+// ---- T9.1: room photos (presigned POST straight to S3) ----
+export const PHOTO_MAX_COUNT = 10;
+
+export const photoParam = z.object({ id: z.string().min(1), photoId: z.string().min(1) });
+
+export const photoUploadBody = z.object({
+  content_type: z.enum(PHOTO_CONTENT_TYPES, { error: 'รองรับเฉพาะไฟล์ JPG, PNG หรือ WebP' }),
+  size: z.number().int().min(1).max(PHOTO_MAX_BYTES, 'ไฟล์ต้องมีขนาดไม่เกิน 5 MB'),
+});
+
+export type PhotoUploadBody = z.infer<typeof photoUploadBody>;
+
+export const photoRegisterBody = z.object({ object_key: z.string().min(1).max(300) });
+
+export const photoOrderBody = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(PHOTO_MAX_COUNT),
+});

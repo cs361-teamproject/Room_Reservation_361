@@ -1,16 +1,29 @@
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import emptyImg from '../assets/empty-search.png'
 
-export default function EmptyState() {
+interface EmptyStateProps {
+  title?: string
+  text?: ReactNode
+  children?: ReactNode
+}
+
+export default function EmptyState({
+  title = 'ไม่พบห้องเรียนที่ค้นหา',
+  text = (
+    <>
+      เราได้ค้นหาจากห้องเรียนทั้งหมดในระบบแล้ว
+      <br />
+      แต่ไม่พบห้องที่ตรงกับเงื่อนไขของคุณ
+    </>
+  ),
+  children,
+}: EmptyStateProps) {
   return (
     <div style={styles.wrap}>
       <img src={emptyImg} alt="" style={styles.img} />
-      <p style={styles.title}>ไม่พบห้องเรียนที่ค้นหา</p>
-      <p style={styles.text}>
-        เราได้ค้นหาจากห้องเรียนทั้งหมดในระบบแล้ว
-        <br />
-        แต่ไม่พบห้องที่ตรงกับเงื่อนไขของคุณ
-      </p>
+      <p style={styles.title}>{title}</p>
+      <p style={styles.text}>{text}</p>
+      {children}
     </div>
   )
 }

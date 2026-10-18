@@ -1,18 +1,22 @@
 import type { CSSProperties } from 'react'
 import lineIcon from '../assets/Line.png'
-
-const RULES = [
-  'จองล่วงหน้าได้ไม่เกิน 7 วัน ครั้งละไม่เกิน 2 ชั่วโมง',
-  'เข้าใช้ห้องภายใน 15 นาที หลังเวลาเริ่ม ไม่งั้นระบบจะยกเลิกอัตโนมัติ',
-  'ยกเลิกก่อนเวลาอย่างน้อย 1 ชั่วโมง หากไม่ต้องการใช้ห้องแล้ว',
-  'รักษาความสะอาดและเก็บอุปกรณ์ ให้อยู่ในสภาพเดิมก่อนออกจากห้อง',
-]
+import { rolesLabel } from '../utils/bookingRules'
+import type { RoomRules } from '../types/booking'
 
 interface BookingRulesProps {
+  /** This room's rules; the general rules below apply to every room */
+  rules: RoomRules
   contactHref?: string
 }
 
-export default function BookingRules({ contactHref = '#' }: BookingRulesProps) {
+export default function BookingRules({ rules, contactHref = '#' }: BookingRulesProps) {
+  const RULES = [
+    `ห้องนี้จองได้ครั้งละไม่เกิน ${rules.max_hours} ชั่วโมง และเปิดให้${rolesLabel(rules.allowed_roles)}จองเท่านั้น`,
+    'จองล่วงหน้าได้ไม่เกิน 7 วัน ทุกการจองต้องรอเจ้าหน้าที่อนุมัติก่อนเข้าใช้ห้อง',
+    'ยกเลิกหรือแก้เวลาได้ที่หน้า “การจองของฉัน” ก่อนถึงเวลาเริ่มใช้ห้อง',
+    'รักษาความสะอาดและเก็บอุปกรณ์ ให้อยู่ในสภาพเดิมก่อนออกจากห้อง',
+  ]
+
   return (
     <section className="booking-rules" style={styles.section}>
       <h2 style={styles.heading}>การจองและกฎของการใช้งาน</h2>

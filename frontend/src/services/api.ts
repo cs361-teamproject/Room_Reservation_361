@@ -1,3 +1,4 @@
+import { isAxiosError } from 'axios'
 import axiosInstance from '../config/axios'
 import type { AxiosRequestConfig } from 'axios'
 
@@ -109,3 +110,33 @@ export const deleteRequest = async <T = any>(
 }
 
 
+/**
+ * Error from a write endpoint, keeping the HTTP status so the UI can tell
+ * 400 (fix the form) from 403 (not allowed) and 409 (slot taken).
+ */
+export class ApiError extends Error {
+  readonly status: number
+  readonly messages: string[]
+
+  constructor(status: number, message: string | string[]) {
+    const messages = Array.isArray(message) ? message : [message]
+    super(messages.join(', '))
+    this.status = status
+    this.messages = messages
+  }
+}
+
+/**
+ * Unwraps { success, message, data } of any axios call and turns HTTP errors into ApiError,
+ * keeping the status (400 / 403 / 409 ...) and every validation message.
+ */
+export async function send<T>(request: Promise<{ data: { data: T } }>): Promise<T> {
+  try {
+    return (await request).data.data
+  } catch (e) {
+    if (isAxiosError(e) && e.response) {
+      throw new ApiError(e.response.status, e.response.data?.message ?? e.message)
+    }
+    throw new ApiError(0, 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่')
+  }
+}

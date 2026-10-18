@@ -1,6 +1,10 @@
 import type { CSSProperties } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import logo from '../assets/logo.png'
+import { useAuth } from '../auth/context'
+import type { UserRole } from '../types/booking'
+import { ROLE_LABELS } from '../utils/bookingRules'
+import { primaryBtn, secondaryBtn } from './buttons'
 
 interface NavItem {
   label: string
@@ -11,10 +15,22 @@ interface NavBarProps {
   items?: NavItem[]
 }
 
-const defaultItems: NavItem[] = [{ label: 'All rooms', to: '/' }]
+// Menus per role (logged out: rooms only). The pages check the role again (RequireRole).
+function itemsFor(role: UserRole | undefined): NavItem[] {
+  const items: NavItem[] = [{ label: 'All rooms', to: '/' }]
+  if (role === 'STUDENT' || role === 'LECTURER') items.push({ label: 'การจองของฉัน', to: '/my-bookings' })
+  if (role === 'STAFF' || role === 'ADMIN') items.push({ label: 'Admin', to: '/admin' })
+  return items
+}
 
-export default function NavBar({ items = defaultItems }: NavBarProps) {
+export default function NavBar({ items }: NavBarProps) {
   const location = useLocation()
+  const navigate = useNavigate()
+  const { status, user, logout } = useAuth()
+  // The login page keeps only the logo: no menu to wander off to
+  const onLogin = location.pathname.startsWith('/login')
+  items ??= onLogin ? [] : itemsFor(user?.role)
+  const loginHref = `/login?next=${encodeURIComponent(location.pathname + location.search)}`
 
   return (
     <header style={styles.header}>
@@ -38,6 +54,30 @@ export default function NavBar({ items = defaultItems }: NavBarProps) {
             )
           })}
         </nav>
+        <div className="navbar-user" style={styles.user}>
+          {user ? (
+            <>
+              <span style={styles.userName}>{user.display_name ?? user.username}</span>
+              <span style={styles.roleTag}>{ROLE_LABELS[user.role]}</span>
+              <button
+                style={{ ...secondaryBtn, ...styles.smallBtn }}
+                onClick={async () => {
+                  await logout()
+                  navigate('/')
+                }}
+              >
+                ออกจากระบบ
+              </button>
+            </>
+          ) : (
+            status === 'anonymous' &&
+            !onLogin && (
+              <Link to={loginHref} style={{ ...primaryBtn, ...styles.smallBtn, textDecoration: 'none' }}>
+                เข้าสู่ระบบ
+              </Link>
+            )
+          )}
+        </div>
       </div>
     </header>
   )
@@ -74,4 +114,16 @@ const styles: Record<string, CSSProperties> = {
     borderBottom: '4px solid transparent',
   },
   linkActive: { borderBottomColor: '#F59E0B' },
+  user: { marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 },
+  userName: { fontSize: 15, fontWeight: 600, whiteSpace: 'nowrap' },
+  roleTag: {
+    padding: '3px 10px',
+    borderRadius: 999,
+    background: '#F3F3F3',
+    fontSize: 13,
+    fontWeight: 600,
+    color: '#4b4b4b',
+    whiteSpace: 'nowrap',
+  },
+  smallBtn: { height: 36, padding: '0 14px', fontSize: 14 },
 }

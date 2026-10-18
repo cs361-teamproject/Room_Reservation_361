@@ -1,11 +1,17 @@
+import { useState } from 'react'
 import type { CSSProperties } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import RoomGallery from '../components/RoomGallery'
 import EquipmentBar from '../components/EquipmentBar'
 import BookingRules from '../components/BookingRules'
 import RoomSchedule from '../components/RoomSchedule'
+import BookingFormModal from '../components/BookingFormModal'
+import { rolesLabel } from '../utils/bookingRules'
+import { useToast } from '../components/Toast'
+import { disabledBtn, primaryBtn } from '../components/buttons'
+import { useAuth } from '../auth/context'
 import { useAsync } from '../hooks/useAsync'
-import { getRoom } from '../services/rooms'
+import { getRoom, rulesOf } from '../services/rooms'
 import monitorIcon from '../assets/icon-mornitor.png'
 
 const STATUS_TAG: Record<string, { label: string; color: string }> = {
@@ -19,6 +25,12 @@ export default function RoomDetail() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { data: room, error, loading } = useAsync(id, () => getRoom(id))
+  const location = useLocation()
+  const [booking, setBooking] = useState(false)
+  // Bumped after a booking so the schedule fetches again and shows it
+  const [scheduleVersion, setScheduleVersion] = useState(0)
+  const { status: authStatus, user } = useAuth()
+  const { toast, show } = useToast()
 
   if (loading) {
     return (
@@ -39,6 +51,18 @@ export default function RoomDetail() {
   }
 
   const status = STATUS_TAG[room.status] ?? { label: room.status, color: '#6b6b6b' }
+  const rules = rulesOf(room)
+  // Logged out: the button leads to the login page and back here
+  const blockedReason =
+    room.status !== 'AVAILABLE'
+      ? 'ห้องนี้ปิดปรับปรุง ยังจองไม่ได้'
+      : authStatus === 'loading'
+        ? 'กำลังตรวจสอบการเข้าสู่ระบบ…'
+        : user && !rules.allowed_roles.includes(user.role)
+          ? `ห้องนี้จองได้เฉพาะ${rolesLabel(rules.allowed_roles)}`
+          : null
+  const startBooking = () =>
+    user ? setBooking(true) : navigate(`/login?next=${encodeURIComponent(location.pathname + location.search)}`)
 
   return (
     <main className="room-detail-page" style={styles.main}>
@@ -78,20 +102,52 @@ export default function RoomDetail() {
               <span className="room-detail-status" style={{ ...styles.statusTag, background: status.color }}>
                 {status.label}
               </span>
+              <button
+                className="room-detail-book"
+                style={{ ...primaryBtn, ...styles.bookBtn, ...(blockedReason ? disabledBtn : null) }}
+                disabled={Boolean(blockedReason)}
+                title={blockedReason ?? undefined}
+                onClick={startBooking}
+              >
+                {user || authStatus === 'loading' ? 'จองห้องนี้' : 'เข้าสู่ระบบเพื่อจอง'}
+              </button>
             </div>
           </div>
+          {blockedReason && authStatus !== 'loading' && <p style={styles.blocked}>{blockedReason}</p>}
 
           <EquipmentBar room={room} />
         </div>
 
         <RoomSchedule
+          key={scheduleVersion}
           roomId={room.id}
           closed={room.status !== 'AVAILABLE'}
           focusDate={searchParams.get('date') ?? undefined}
         />
 
-        <BookingRules />
+        <BookingRules rules={rules} />
       </div>
+
+      {booking && (
+        <BookingFormModal
+          room={{ id: room.id, name: room.name }}
+          rules={rules}
+          onClose={() => setBooking(false)}
+          onDone={() => {
+            setBooking(false)
+            setScheduleVersion((v) => v + 1)
+            show(
+              <>
+                ส่งคำขอแล้ว รอเจ้าหน้าที่อนุมัติ
+                <Link to="/my-bookings" style={styles.toastLink}>
+                  ดูการจองของฉัน
+                </Link>
+              </>,
+            )
+          }}
+        />
+      )}
+      {toast}
     </main>
   )
 }
@@ -153,6 +209,9 @@ const styles: Record<string, CSSProperties> = {
   },
   capacityText: { fontSize: 15, fontWeight: 600 },
   capacityValue: { fontSize: 15, fontWeight: 700 },
+  bookBtn: { height: 40, minWidth: 150 },
+  blocked: { margin: '12px 0 0', textAlign: 'right', fontSize: 14, color: '#B91C1C' },
+  toastLink: { color: '#FCD34D', fontWeight: 600, whiteSpace: 'nowrap' },
   statusTag: {
     display: 'flex',
     alignItems: 'center',

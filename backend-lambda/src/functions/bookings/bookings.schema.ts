@@ -65,3 +65,61 @@ export const listQuery = z
   });
 
 export type ListQuery = z.infer<typeof listQuery>;
+
+export const idParam = z.object({ id: z.string().min(1) });
+
+export type IdParam = z.infer<typeof idParam>;
+
+// ---- T8: staff manage queue ----
+export const manageQuery = z.object({
+  status: csvStatus().default(['PENDING']),
+  limit: z.coerce.number().int().min(1).max(50).default(10),
+});
+
+export type ManageQuery = z.infer<typeof manageQuery>;
+
+export const rejectBody = z.object({
+  reason: z.string().trim().min(1, 'reason is required').max(500, 'reason must be at most 500 characters'),
+});
+
+export type RejectBody = z.infer<typeof rejectBody>;
+
+// ISO 8601 with an offset (Z or +07:00), so the instant is unambiguous whatever TZ the Lambda runs in
+const isoDateTime = z.iso.datetime({ offset: true, error: 'Must be an ISO 8601 datetime with offset, e.g. 2026-10-20T14:00:00+07:00' });
+
+export const createBookingBody = z.object({
+  room_id: z.string({ error: 'Required' }).min(1, 'Required'),
+  start_time: isoDateTime,
+  end_time: isoDateTime,
+  title: z.string().trim().min(1, 'Must not be empty').max(200, 'Must be at most 200 characters').optional(),
+});
+
+export type CreateBookingBody = z.infer<typeof createBookingBody>;
+
+// GET /mine query parameters
+const SCOPES = ['upcoming', 'past', 'all'] as const;
+
+export const mineQuery = z
+  .object({
+    scope: z.enum(SCOPES, { error: 'Must be one of upcoming, past, all' }).default('upcoming'),
+    status: csvStatus().optional(),
+    page: z.coerce.number().int().min(1, 'Must be at least 1').default(1),
+    limit: z.coerce.number().int().min(1, 'Must be at least 1').max(50, 'Must not exceed 50').default(10),
+  });
+
+export type MineQuery = z.infer<typeof mineQuery>;
+
+// PATCH /:id - Update booking times
+export const updateBookingBody = z.object({
+  start_time: isoDateTime,
+  end_time: isoDateTime,
+});
+
+export type UpdateBookingBody = z.infer<typeof updateBookingBody>;
+
+// POST /:id/cancel - Cancel booking
+export const cancelBookingBody = z.object({
+  reason: z.string().trim().max(500, 'Must be at most 500 characters').optional(),
+});
+
+export type CancelBookingBody = z.infer<typeof cancelBookingBody>;

@@ -1,5 +1,5 @@
 import { and, asc, eq, exists, gt, gte, ilike, inArray, isNull, lt, notExists } from 'drizzle-orm';
-import { getDb } from '../../shared/db/client';
+import { type Db, getDb, type Tx } from '../../shared/db/client';
 import { bookings, facilities, roomFacilities, roomPhotos, rooms } from '../../shared/db/schema';
 
 export interface RoomFilters {
@@ -109,7 +109,7 @@ async function findAllWithDetails(filters: RoomFilters = {}) {
       },
       photos: {
         orderBy: asc(roomPhotos.sortOrder),
-        columns: { objectKey: true },
+        columns: { id: true, objectKey: true },
       },
     },
   });
@@ -127,7 +127,7 @@ async function findByIdWithDetails(id: string) {
       },
       photos: {
         orderBy: asc(roomPhotos.sortOrder),
-        columns: { objectKey: true },
+        columns: { id: true, objectKey: true },
       },
     },
   });
@@ -137,7 +137,94 @@ async function findByIdWithDetails(id: string) {
 export type RoomWithDetails = Awaited<ReturnType<typeof findAllWithDetails>>[number];
 export type RoomDetail = NonNullable<Awaited<ReturnType<typeof findByIdWithDetails>>>;
 
+export type NewRoom = typeof rooms.$inferInsert;
+
+/** Insert only; name conflicts surface as 23505 -> 409 via fromDbError. */
+async function insertRoom(values: NewRoom) {
+  const [row] = await getDb().insert(rooms).values(values).returning();
+  return row;
+}
+
+async function updateRoom(id: string, values: Partial<NewRoom>) {
+  const [row] = await getDb().update(rooms).set(values).where(eq(rooms.id, id)).returning();
+  return row;
+}
+
+async function softDeleteRoom(id: string) {
+  const [row] = await getDb().update(rooms).set({ deletedAt: new Date() }).where(eq(rooms.id, id)).returning();
+  return row;
+}
+
+/** A live room (not deleted) by id, for the 404-before-write checks in the service. */
+async function findLiveRoom(id: string) {
+  const [row] = await getDb()
+    .select({ id: rooms.id })
+    .from(rooms)
+    .where(and(eq(rooms.id, id), isNull(rooms.deletedAt)))
+    .limit(1);
+  return row;
+}
+
+/** True when a future PENDING/APPROVED booking still holds this room. Blocks soft delete. */
+async function hasFutureActiveBookings(roomId: string, now: Date) {
+  const [row] = await getDb()
+    .select({ one: bookings.id })
+    .from(bookings)
+    .where(
+      and(
+        eq(bookings.roomId, roomId),
+        inArray(bookings.status, ['PENDING', 'APPROVED']),
+        gt(bookings.endTime, now),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
+/** A room's photos in display order (the first is the cover) */
+async function listPhotos(roomId: string, db: Db | Tx = getDb()) {
+  return db
+    .select({ id: roomPhotos.id, objectKey: roomPhotos.objectKey, sortOrder: roomPhotos.sortOrder })
+    .from(roomPhotos)
+    .where(eq(roomPhotos.roomId, roomId))
+    .orderBy(asc(roomPhotos.sortOrder), asc(roomPhotos.createdAt));
+}
+
+async function insertPhoto(values: typeof roomPhotos.$inferInsert) {
+  await getDb().insert(roomPhotos).values(values);
+}
+
+/** Deletes one photo of this room; undefined when the id is not one of its photos */
+async function deletePhoto(roomId: string, photoId: string) {
+  const [row] = await getDb()
+    .delete(roomPhotos)
+    .where(and(eq(roomPhotos.id, photoId), eq(roomPhotos.roomId, roomId)))
+    .returning({ objectKey: roomPhotos.objectKey });
+  return row;
+}
+
+/** `ids` in their new order; one transaction so readers never see a half-sorted list */
+async function reorderPhotos(roomId: string, ids: string[]) {
+  await getDb().transaction(async (tx) => {
+    for (const [i, id] of ids.entries()) {
+      await tx
+        .update(roomPhotos)
+        .set({ sortOrder: i + 1 })
+        .where(and(eq(roomPhotos.id, id), eq(roomPhotos.roomId, roomId)));
+    }
+  });
+}
+
 export const roomsRepository = {
+  listPhotos,
+  insertPhoto,
+  deletePhoto,
+  reorderPhotos,
   findAllWithDetails,
   findByIdWithDetails,
+  insertRoom,
+  updateRoom,
+  softDeleteRoom,
+  findLiveRoom,
+  hasFutureActiveBookings,
 };
