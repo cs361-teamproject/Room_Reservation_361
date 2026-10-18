@@ -8,6 +8,7 @@
     { "name": "rooms", "routes": ["/api/rooms", "/api/rooms/{proxy+}"] },
     { "name": "bookings", "routes": ["/api/bookings", "/api/bookings/{proxy+}"] },
     { "name": "users", "routes": ["/api/users", "/api/users/{proxy+}"] },
+    { "name": "stats", "routes": ["/api/stats", "/api/stats/{proxy+}"] },
     { "name": "migrate", "routes": [], "timeout": 120 }
   ]
 }

@@ -1,16 +1,20 @@
 import type { AuthUser } from '../../shared/auth';
 import { getDb } from '../../shared/db/client';
 import type { UserRole } from '../../shared/db/schema';
-import { badRequest, forbidden, notFound } from '../../shared/http/errors';
+import { badRequest, conflict, forbidden, notFound } from '../../shared/http/errors';
 import {
+  approveIfPending,
   type BookingRow,
   findBookingsInRange,
+  findManagedBookings,
   findRoomForBooking,
   insertBooking,
+  type ManagedBookingRow,
   recordEvent,
+  rejectIfPending,
   type RoomForBooking,
 } from './bookings.repository';
-import type { CreateBookingBody, ListQuery } from './bookings.schema';
+import type { CreateBookingBody, ListQuery, ManageQuery } from './bookings.schema';
 
 // Asia/Bangkok is UTC+7, no DST — offset is always +07:00
 const BKK_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -45,6 +49,25 @@ const toResponse = (row: BookingRow) => ({
     id: row.roomId,
     room_name: row.roomName,
   },
+});
+
+const toManagedItem = (row: ManagedBookingRow) => ({
+  id: row.id,
+  title: row.title,
+  status: row.status,
+  start_time: row.startTime,
+  end_time: row.endTime,
+  created_at: row.createdAt,
+  room_name: row.roomName,
+  user: { display_name: row.displayName, role: row.role },
+});
+
+const toDecisionItem = (booking: { id: string; status: string; reviewedBy: string | null; reviewedAt: Date | null; rejectReason: string | null }) => ({
+  id: booking.id,
+  status: booking.status,
+  reviewed_by: booking.reviewedBy,
+  reviewed_at: booking.reviewedAt,
+  reject_reason: booking.rejectReason,
 });
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -125,6 +148,51 @@ export const bookingsService = {
         end_time: booking.endTime,
         room: { id: room.id, room_name: room.roomName },
       };
+    });
+  },
+
+  /** Staff/Admin queue: latest bookings first. Writes are STAFF-only (app.ts). */
+  async manage(query: ManageQuery) {
+    const rows = await findManagedBookings({
+      statuses: query.status as Array<'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'>,
+      limit: query.limit,
+    });
+    return rows.map(toManagedItem);
+  },
+
+  /**
+   * STAFF approves a PENDING booking. The UPDATE is guarded by status so a
+   * double-click or two staff racing leave one winner; the loser gets 409.
+   * Unknown ids answer 404 (checked first, outside the guarded update).
+   */
+  async approve(staff: AuthUser, bookingId: string) {
+    return getDb().transaction(async (tx) => {
+      const booking = await tx.query.bookings.findFirst({
+        where: (b, { eq }) => eq(b.id, bookingId),
+        columns: { id: true, status: true },
+      });
+      if (!booking) throw notFound('Booking not found');
+
+      const approved = await approveIfPending(tx, bookingId, staff.id);
+      if (!approved) throw conflict('รายการนี้ถูกดำเนินการแล้ว');
+      await recordEvent(tx, { bookingId, actorId: staff.id, action: 'APPROVED' });
+      return toDecisionItem(approved);
+    });
+  },
+
+  /** Same race guard as approve, with the mandatory reject reason stored. */
+  async reject(staff: AuthUser, bookingId: string, reason: string) {
+    return getDb().transaction(async (tx) => {
+      const booking = await tx.query.bookings.findFirst({
+        where: (b, { eq }) => eq(b.id, bookingId),
+        columns: { id: true, status: true },
+      });
+      if (!booking) throw notFound('Booking not found');
+
+      const rejected = await rejectIfPending(tx, bookingId, staff.id, reason);
+      if (!rejected) throw conflict('รายการนี้ถูกดำเนินการแล้ว');
+      await recordEvent(tx, { bookingId, actorId: staff.id, action: 'REJECTED', note: reason });
+      return toDecisionItem(rejected);
     });
   },
 };
