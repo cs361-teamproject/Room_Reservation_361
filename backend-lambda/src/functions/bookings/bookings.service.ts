@@ -264,10 +264,13 @@ export const bookingsService = {
       reject_reason: booking.rejectReason,
       cancel_reason: booking.cancelReason,
       remark: booking.remark,
+      created_at: booking.createdAt,
       room: {
         id: booking.roomId,
         room_name: booking.roomName,
       },
+      // Staff look at other people's bookings, so they also see who made it
+      ...(isStaffOrAdmin && { user: { display_name: booking.userDisplayName, role: booking.userRole } }),
     };
   },
 

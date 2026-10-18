@@ -1,5 +1,5 @@
 import { and, asc, eq, exists, gt, gte, ilike, inArray, isNull, lt, notExists } from 'drizzle-orm';
-import { getDb } from '../../shared/db/client';
+import { type Db, getDb, type Tx } from '../../shared/db/client';
 import { bookings, facilities, roomFacilities, roomPhotos, rooms } from '../../shared/db/schema';
 
 export interface RoomFilters {
@@ -109,7 +109,7 @@ async function findAllWithDetails(filters: RoomFilters = {}) {
       },
       photos: {
         orderBy: asc(roomPhotos.sortOrder),
-        columns: { objectKey: true },
+        columns: { id: true, objectKey: true },
       },
     },
   });
@@ -127,7 +127,7 @@ async function findByIdWithDetails(id: string) {
       },
       photos: {
         orderBy: asc(roomPhotos.sortOrder),
-        columns: { objectKey: true },
+        columns: { id: true, objectKey: true },
       },
     },
   });
@@ -181,7 +181,45 @@ async function hasFutureActiveBookings(roomId: string, now: Date) {
   return row !== undefined;
 }
 
+/** A room's photos in display order (the first is the cover) */
+async function listPhotos(roomId: string, db: Db | Tx = getDb()) {
+  return db
+    .select({ id: roomPhotos.id, objectKey: roomPhotos.objectKey, sortOrder: roomPhotos.sortOrder })
+    .from(roomPhotos)
+    .where(eq(roomPhotos.roomId, roomId))
+    .orderBy(asc(roomPhotos.sortOrder), asc(roomPhotos.createdAt));
+}
+
+async function insertPhoto(values: typeof roomPhotos.$inferInsert) {
+  await getDb().insert(roomPhotos).values(values);
+}
+
+/** Deletes one photo of this room; undefined when the id is not one of its photos */
+async function deletePhoto(roomId: string, photoId: string) {
+  const [row] = await getDb()
+    .delete(roomPhotos)
+    .where(and(eq(roomPhotos.id, photoId), eq(roomPhotos.roomId, roomId)))
+    .returning({ objectKey: roomPhotos.objectKey });
+  return row;
+}
+
+/** `ids` in their new order; one transaction so readers never see a half-sorted list */
+async function reorderPhotos(roomId: string, ids: string[]) {
+  await getDb().transaction(async (tx) => {
+    for (const [i, id] of ids.entries()) {
+      await tx
+        .update(roomPhotos)
+        .set({ sortOrder: i + 1 })
+        .where(and(eq(roomPhotos.id, id), eq(roomPhotos.roomId, roomId)));
+    }
+  });
+}
+
 export const roomsRepository = {
+  listPhotos,
+  insertPhoto,
+  deletePhoto,
+  reorderPhotos,
   findAllWithDetails,
   findByIdWithDetails,
   insertRoom,

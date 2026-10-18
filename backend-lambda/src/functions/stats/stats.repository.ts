@@ -20,8 +20,8 @@ export async function weeklyRoomStats(weekStart: Date, weekEnd: Date): Promise<R
       FROM "Booking" b
       JOIN "Room" r ON r."id" = b."room_id"
      WHERE b."status" = 'APPROVED'
-       AND b."start_time" >= ${weekStart}
-       AND b."start_time" < ${weekEnd}
+       AND b."start_time" >= ${weekStart.toISOString()}
+       AND b."start_time" < ${weekEnd.toISOString()}
      GROUP BY r."id", r."room_name"
      ORDER BY "hours" DESC, "bookings" DESC
   `);

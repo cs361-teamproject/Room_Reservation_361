@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PHOTO_CONTENT_TYPES, PHOTO_MAX_BYTES } from '../../shared/aws/s3';
 
 export const idParam = z.object({ id: z.string().min(1) });
 
@@ -82,7 +83,7 @@ const seatCapacity = z.coerce.number().int().min(1, 'seat_capacity must be at le
 
 export const createRoomBody = z.object({
   room_name: roomName,
-  description: z.string().trim().max(2000).optional(),
+  description: z.string().trim().max(2000).nullable().optional(),
   room_type: z.enum(ROOM_TYPES, { error: 'Must be one of LAB, LECTURE, MEETING, COWORKING' }),
   size: z.enum(ROOM_SIZES, { error: 'Must be one of SMALL, MEDIUM, LARGE' }),
   seat_capacity: seatCapacity,
@@ -95,6 +96,8 @@ export const updateRoomBody = z
   .object({
     room_name: roomName.optional(),
     description: z.string().trim().max(2000).nullable().optional(),
+    room_type: z.enum(ROOM_TYPES, { error: 'Must be one of LAB, LECTURE, MEETING, COWORKING' }).optional(),
+    size: z.enum(ROOM_SIZES, { error: 'Must be one of SMALL, MEDIUM, LARGE' }).optional(),
     seat_capacity: seatCapacity.optional(),
     status: z.enum(ROOM_STATUSES, { error: 'Must be one of AVAILABLE, MAINTENANCE' }).optional(),
   })
@@ -108,3 +111,21 @@ export const roomRulesBody = z.object({
 });
 
 export type RoomRulesBody = z.infer<typeof roomRulesBody>;
+
+// ---- T9.1: room photos (presigned POST straight to S3) ----
+export const PHOTO_MAX_COUNT = 10;
+
+export const photoParam = z.object({ id: z.string().min(1), photoId: z.string().min(1) });
+
+export const photoUploadBody = z.object({
+  content_type: z.enum(PHOTO_CONTENT_TYPES, { error: 'รองรับเฉพาะไฟล์ JPG, PNG หรือ WebP' }),
+  size: z.number().int().min(1).max(PHOTO_MAX_BYTES, 'ไฟล์ต้องมีขนาดไม่เกิน 5 MB'),
+});
+
+export type PhotoUploadBody = z.infer<typeof photoUploadBody>;
+
+export const photoRegisterBody = z.object({ object_key: z.string().min(1).max(300) });
+
+export const photoOrderBody = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(PHOTO_MAX_COUNT),
+});

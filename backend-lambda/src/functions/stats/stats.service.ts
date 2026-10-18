@@ -16,7 +16,8 @@ function mondayOfWeek(day: string): { mondayBkk: Date; label: string } {
   const mondayOffset = (bkkDay.getUTCDay() + 6) % 7;
   const mondayUtcMs = Date.UTC(bkkDay.getUTCFullYear(), bkkDay.getUTCMonth(), bkkDay.getUTCDate()) - mondayOffset * DAY_MS;
   const mondayBkk = new Date(mondayUtcMs - BKK_OFFSET_MS);
-  return { mondayBkk, label: mondayBkk.toISOString().slice(0, 10) };
+  // mondayUtcMs is the Monday at 00:00 UTC, so its date part is the Bangkok calendar date
+  return { mondayBkk, label: new Date(mondayUtcMs).toISOString().slice(0, 10) };
 }
 
 const toItem = (row: RoomWeekStat) => ({
@@ -33,7 +34,8 @@ export const statsService = {
     return {
       week_start: label,
       total_bookings: items.reduce((n, r) => n + r.bookings, 0),
-      total_hours: items.reduce((n, r) => n + r.hours, 0),
+      // Sum of rounded floats: round again so 0.1 + 0.2 never shows as 0.30000000000000004
+      total_hours: Math.round(items.reduce((n, r) => n + r.hours, 0) * 100) / 100,
       rooms: items,
       top_room: items[0]?.room_name ?? null,
     };
