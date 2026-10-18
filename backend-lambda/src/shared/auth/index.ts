@@ -1,3 +1,4 @@
+import { setDefaultAutoSelectFamilyAttemptTimeout } from 'node:net';
 import { CognitoJwtVerifier } from 'aws-jwt-verify';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { Context } from 'hono';
@@ -23,6 +24,11 @@ function idTokenVerifier() {
   const { COGNITO_USER_POOL_ID, COGNITO_CLIENT_ID } = getEnv();
   if (!COGNITO_USER_POOL_ID || !COGNITO_CLIENT_ID) {
     throw unauthorized('Bearer tokens need COGNITO_USER_POOL_ID and COGNITO_CLIENT_ID in the env');
+  }
+  if (!verifier) {
+    // The JWKS lives in us-east-1. Node tries each address for only 250 ms before moving on, which
+    // is shorter than a TCP connect from Thailand, so every attempt timed out. Allow 2 s each.
+    setDefaultAutoSelectFamilyAttemptTimeout(2000);
   }
   verifier ??= CognitoJwtVerifier.create({ userPoolId: COGNITO_USER_POOL_ID, tokenUse: 'id', clientId: COGNITO_CLIENT_ID });
   return verifier;
