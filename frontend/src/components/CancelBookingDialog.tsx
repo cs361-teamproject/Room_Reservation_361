@@ -4,13 +4,12 @@ import Modal from './Modal'
 import { dangerBtn, disabledBtn, secondaryBtn } from './buttons'
 import { ApiError } from '../services/api'
 import { cancelBooking } from '../services/bookings'
-import type { BookingDetail } from '../types/booking'
 import { fullDateLabel, timeRangeLabel } from '../utils/bkkDate'
 
 interface Props {
   booking: { id: string; room_name: string; start_time: string; end_time: string }
   onClose: () => void
-  onDone: (booking: BookingDetail) => void
+  onDone: () => void
 }
 
 export default function CancelBookingDialog({ booking, onClose, onDone }: Props) {
@@ -22,7 +21,8 @@ export default function CancelBookingDialog({ booking, onClose, onDone }: Props)
     setBusy(true)
     setError(null)
     try {
-      onDone(await cancelBooking(booking.id, reason.trim() || undefined))
+      await cancelBooking(booking.id, reason.trim() || undefined)
+      onDone()
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'ยกเลิกไม่สำเร็จ กรุณาลองใหม่')
       setBusy(false)

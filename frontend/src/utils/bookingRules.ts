@@ -1,6 +1,6 @@
 import type { UserRole } from '../types/booking'
 
-const ROLE_LABELS: Record<UserRole, string> = {
+export const ROLE_LABELS: Record<UserRole, string> = {
   STUDENT: 'นักศึกษา',
   LECTURER: 'อาจารย์',
   STAFF: 'เจ้าหน้าที่',

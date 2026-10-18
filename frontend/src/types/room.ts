@@ -1,3 +1,5 @@
+import type { UserRole } from './booking'
+
 export interface Room {
   id: string
   name: string
@@ -11,4 +13,7 @@ export interface Room {
   mic?: number
   image?: string
   images?: string[]
+  /** Booking rules (GET /api/rooms and /api/rooms/:id) */
+  maxHours: number
+  allowedRoles: UserRole[]
 }

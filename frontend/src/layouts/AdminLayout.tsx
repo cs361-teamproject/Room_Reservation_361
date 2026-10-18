@@ -2,7 +2,7 @@ import { useCallback } from 'react'
 import type { CSSProperties } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAsync } from '../hooks/useAsync'
-import { useMockUser } from '../mocks/session'
+import { useAuth } from '../auth/context'
 import { getPendingCount } from '../services/admin'
 import type { UserRole } from '../types/booking'
 import type { AdminContext } from './adminContext'
@@ -21,8 +21,9 @@ const MENU: MenuItem[] = [
 
 /** Side menu on desktop, a row of tabs on phones (.admin-* in index.css) */
 export default function AdminLayout() {
-  const user = useMockUser()
-  const pending = useAsync(`pending|${user.role}`, getPendingCount)
+  // RequireRole only renders this for STAFF / ADMIN
+  const user = useAuth().user!
+  const pending = useAsync(`pending|${user.id}`, getPendingCount)
   const refreshPending = useCallback(() => pending.reload(), [pending])
   const count = pending.data ?? pending.previous
 

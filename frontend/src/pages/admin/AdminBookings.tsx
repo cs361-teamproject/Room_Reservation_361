@@ -8,12 +8,12 @@ import { useToast } from '../../components/Toast'
 import { disabledBtn, ghostDangerBtn, primaryBtn, secondaryBtn } from '../../components/buttons'
 import { useAsync } from '../../hooks/useAsync'
 import { useAdminContext } from '../../layouts/adminContext'
-import { ROLE_LABELS, useMockUser } from '../../mocks/session'
+import { useAuth } from '../../auth/context'
 import { ApiError } from '../../services/api'
 import { approveBooking, getManageBookings } from '../../services/admin'
 import type { BookingStatus, ManageBooking } from '../../types/booking'
 import { dateTimeLabel, fullDateLabel, timeRangeLabel } from '../../utils/bkkDate'
-import { hasStarted } from '../../utils/bookingRules'
+import { hasStarted, ROLE_LABELS } from '../../utils/bookingRules'
 
 const LIMIT = 10
 
@@ -26,9 +26,9 @@ const FILTERS: { value: BookingStatus | 'ALL'; label: string }[] = [
 ]
 
 export default function AdminBookings() {
-  const user = useMockUser()
-  // Approving is STAFF only; ADMIN gets the same list read-only
-  const canDecide = user.role === 'STAFF'
+  const { user } = useAuth()
+  // Approving is STAFF only; ADMIN gets the same list read-only (RequireRole guarantees a user)
+  const canDecide = user?.role === 'STAFF'
   const { refreshPending } = useAdminContext()
   const [filter, setFilter] = useState<BookingStatus | 'ALL'>('PENDING')
   const [detailId, setDetailId] = useState<string | null>(null)
@@ -36,7 +36,7 @@ export default function AdminBookings() {
   const [busyId, setBusyId] = useState<string | null>(null)
   const { toast, show } = useToast()
 
-  const { data, previous, error, loading, reload } = useAsync(`${filter}|${user.role}`, () => getManageBookings(filter, LIMIT))
+  const { data, previous, error, loading, reload } = useAsync(`${filter}|${user?.id}`, () => getManageBookings(filter, LIMIT))
   const items = data ?? (loading ? previous : undefined)
 
   const refresh = () => {
