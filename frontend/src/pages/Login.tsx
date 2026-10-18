@@ -44,7 +44,7 @@ export default function Login() {
   const next = params.get('next')?.startsWith('/') && !params.get('next')?.startsWith('//') ? params.get('next')! : '/'
 
   const loginForm = useForm<LoginValues>()
-  const passwordForm = useForm<NewPasswordValues>()
+  const passwordForm = useForm<NewPasswordValues>({ defaultValues: { password: '', confirm: '' } })
 
   useEffect(() => {
     if (user) navigate(next, { replace: true })
@@ -53,7 +53,10 @@ export default function Login() {
   const submitLogin = loginForm.handleSubmit(async ({ username, password }) => {
     setError(null)
     try {
-      if ((await login(username, password)) === 'new-password') setStep('new-password')
+      if ((await login(username, password)) === 'new-password') {
+        passwordForm.reset({ password: '', confirm: '' })
+        setStep('new-password')
+      }
     } catch (e) {
       setError(loginMessage(e))
     }
@@ -77,7 +80,8 @@ export default function Login() {
         <img src={logo} alt="Computer Science, Thammasat University" style={styles.logo} />
 
         {step === 'login' ? (
-          <form onSubmit={submitLogin} style={styles.form} noValidate>
+          // Distinct keys: React must not reuse the login inputs (and their typed values) in the next step
+          <form key="login" onSubmit={submitLogin} style={styles.form} noValidate>
             <div>
               <h1 style={styles.title}>เข้าสู่ระบบ</h1>
               <p style={styles.subtitle}>ใช้รหัสประจำตัว (หรืออีเมล) และรหัสผ่านของระบบจองห้อง</p>
@@ -113,7 +117,7 @@ export default function Login() {
             </button>
           </form>
         ) : (
-          <form onSubmit={submitNewPassword} style={styles.form} noValidate>
+          <form key="new-password" onSubmit={submitNewPassword} style={styles.form} noValidate>
             <div>
               <h1 style={styles.title}>ตั้งรหัสผ่านใหม่</h1>
               <p style={styles.subtitle}>เข้าสู่ระบบครั้งแรก กรุณาตั้งรหัสผ่านใหม่แทนรหัสชั่วคราว</p>
