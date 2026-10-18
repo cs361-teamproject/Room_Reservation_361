@@ -4,6 +4,7 @@ import AdminLayout from '../layouts/AdminLayout'
 import Rooms from '../pages/Rooms'
 import RoomDetail from '../pages/RoomDetail'
 import MyBookings from '../pages/MyBookings'
+import Login from '../pages/Login'
 import AdminBookings from '../pages/admin/AdminBookings'
 import AdminRooms from '../pages/admin/AdminRooms'
 import AdminStats from '../pages/admin/AdminStats'
@@ -21,6 +22,10 @@ export const router = createBrowserRouter([
       {
         path: 'rooms/:id',
         element: <RoomDetail />,
+      },
+      {
+        path: 'login',
+        element: <Login />,
       },
       {
         path: 'my-bookings',

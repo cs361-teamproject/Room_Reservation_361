@@ -5,11 +5,13 @@ import BookingDetailModal from '../components/BookingDetailModal'
 import BookingFormModal from '../components/BookingFormModal'
 import CancelBookingDialog from '../components/CancelBookingDialog'
 import EmptyState from '../components/EmptyState'
+import Modal from '../components/Modal'
 import StatusBadge from '../components/StatusBadge'
 import { useToast } from '../components/Toast'
 import { ghostDangerBtn, primaryBtn, secondaryBtn } from '../components/buttons'
 import { useAsync } from '../hooks/useAsync'
-import { getMyBookings, getRoomRules } from '../services/bookings'
+import { getMyBookings } from '../services/bookings'
+import { getRoomRulesByName } from '../services/rooms'
 import type { MyBooking, MyBookingsScope } from '../types/booking'
 import { fullDateLabel, timeRangeLabel } from '../utils/bkkDate'
 import { canCancel, canEdit } from '../utils/bookingRules'
@@ -121,9 +123,8 @@ export default function MyBookings() {
         />
       )}
       {dialog?.kind === 'edit' && (
-        <BookingFormModal
+        <EditBooking
           booking={dialog.booking}
-          rules={getRoomRules(dialog.booking.room_name)}
           onClose={() => setDialog(null)}
           onDone={() => afterChange('บันทึกเวลาใหม่แล้ว รอเจ้าหน้าที่อนุมัติ')}
         />
@@ -138,6 +139,26 @@ export default function MyBookings() {
       {toast}
     </main>
   )
+}
+
+interface EditBookingProps {
+  booking: MyBooking
+  onClose: () => void
+  onDone: () => void
+}
+
+/** The edit form needs the room's current rules, which the list item does not carry */
+function EditBooking({ booking, onClose, onDone }: EditBookingProps) {
+  const rules = useAsync(`rules|${booking.room_name}`, () => getRoomRulesByName(booking.room_name))
+  if (rules.error) {
+    return (
+      <Modal title="แก้เวลาการจอง" onClose={onClose}>
+        <p style={{ margin: 0, color: '#B91C1C', fontSize: 14 }}>โหลดกติกาของห้องไม่สำเร็จ: {rules.error}</p>
+      </Modal>
+    )
+  }
+  if (!rules.data) return null
+  return <BookingFormModal booking={booking} rules={rules.data} onClose={onClose} onDone={onDone} />
 }
 
 interface CardProps {

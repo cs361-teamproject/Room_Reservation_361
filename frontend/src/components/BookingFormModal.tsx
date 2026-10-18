@@ -5,7 +5,7 @@ import Modal from './Modal'
 import { disabledBtn, primaryBtn, secondaryBtn } from './buttons'
 import { ApiError } from '../services/api'
 import { createBooking, updateBookingTime } from '../services/bookings'
-import type { BookingDetail, RoomRules } from '../types/booking'
+import type { RoomRules } from '../types/booking'
 import { rolesLabel } from '../utils/bookingRules'
 import {
   addDays,
@@ -43,7 +43,7 @@ interface Props {
   /** Or move an existing PENDING booking (only its time can change) */
   booking?: { id: string; room_name: string; start_time: string; end_time: string; title?: string | null }
   onClose: () => void
-  onDone: (booking: BookingDetail) => void
+  onDone: () => void
 }
 
 export default function BookingFormModal({ rules, room, booking, onClose, onDone }: Props) {
@@ -91,10 +91,9 @@ export default function BookingFormModal({ rules, room, booking, onClose, onDone
     setServerErrors(null)
     const times = { start_time: bkkIso(v.date, v.start), end_time: bkkIso(v.date, v.end) }
     try {
-      const saved = booking
-        ? await updateBookingTime(booking.id, times)
-        : await createBooking({ room_id: room!.id, ...times, title: v.title.trim() || undefined })
-      onDone(saved)
+      if (booking) await updateBookingTime(booking.id, times)
+      else await createBooking({ room_id: room!.id, ...times, title: v.title.trim() || undefined })
+      onDone()
     } catch (e) {
       const err = e instanceof ApiError ? e : new ApiError(0, 'เกิดข้อผิดพลาด กรุณาลองใหม่')
       setServerErrors({ status: err.status, messages: err.messages })

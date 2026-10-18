@@ -1,72 +1,86 @@
-import { isAxiosError } from 'axios'
 import axiosInstance from '../config/axios'
-import { USE_MOCK_API } from '../config/mock'
-import { mockAdmin } from '../mocks/admin'
 import type { AdminRoom, RoomInput, RoomPhoto, RoomRulesInput } from '../types/admin'
-import type { BookingDetail, BookingStatus, ManageBooking, WeeklyStats } from '../types/booking'
-import { ApiError } from './api'
+import type { BookingStatus, ManageBooking, UserRole, WeeklyStats } from '../types/booking'
+import { ApiError, send } from './api'
 
-// STAFF/ADMIN endpoints (T8–T10), mocked like services/bookings.ts until the backend is ready
-const USE_MOCK = USE_MOCK_API
+// STAFF/ADMIN endpoints (T8–T10, T9.1)
 
-async function send<T>(request: Promise<{ data: { data: T } }>): Promise<T> {
-  try {
-    return (await request).data.data
-  } catch (e) {
-    if (isAxiosError(e) && e.response) throw new ApiError(e.response.status, e.response.data?.message ?? e.message)
-    throw new ApiError(0, 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่')
-  }
+const ALL_STATUSES: BookingStatus[] = ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']
+
+/** Latest requests first; the API defaults to PENDING, so "ALL" lists every status */
+export const getManageBookings = (status: BookingStatus | 'ALL', limit = 10): Promise<ManageBooking[]> =>
+  send(
+    axiosInstance.get('/bookings/manage', {
+      params: { status: (status === 'ALL' ? ALL_STATUSES : [status]).join(','), limit },
+    }),
+  )
+
+export const getPendingCount = async (): Promise<number> => (await getManageBookings('PENDING', 50)).length
+
+/** Both answer only the decision fields; the screens reload the list afterwards */
+export const approveBooking = (id: string): Promise<unknown> => send(axiosInstance.post(`/bookings/${id}/approve`))
+
+export const rejectBooking = (id: string, reason: string): Promise<unknown> =>
+  send(axiosInstance.post(`/bookings/${id}/reject`, { reason }))
+
+/** Item of GET /api/rooms and the answer of the room write endpoints */
+interface ApiRoom extends Omit<AdminRoom, 'photos' | 'max_hours' | 'allowed_roles' | 'status'> {
+  status: AdminRoom['status'] | 'RESERVED'
+  max_hours: number
+  allowed_roles: UserRole[]
+  photos: { id: string; url: string }[]
 }
 
-export const getManageBookings = (status: BookingStatus | 'ALL', limit = 10): Promise<ManageBooking[]> =>
-  USE_MOCK
-    ? mockAdmin.manageBookings(status, limit)
-    : send(axiosInstance.get('/bookings/manage', { params: { ...(status !== 'ALL' && { status }), limit } }))
+const toAdminRoom = (r: ApiRoom): AdminRoom => ({
+  id: r.id,
+  room_name: r.room_name,
+  description: r.description,
+  room_type: r.room_type,
+  size: r.size,
+  seat_capacity: r.seat_capacity,
+  // RESERVED is an unused legacy value: treat it as open
+  status: r.status === 'MAINTENANCE' ? 'MAINTENANCE' : 'AVAILABLE',
+  max_hours: r.max_hours,
+  allowed_roles: r.allowed_roles,
+  photos: r.photos.map((p) => ({ id: p.id, url: p.url })),
+})
 
-export const getPendingCount = (): Promise<number> =>
-  USE_MOCK
-    ? mockAdmin.pendingCount()
-    : getManageBookings('PENDING', 50).then((items) => items.length)
+export const getAdminRooms = async (): Promise<AdminRoom[]> =>
+  (await send<ApiRoom[]>(axiosInstance.get('/rooms'))).map(toAdminRoom)
 
-export const approveBooking = (id: string): Promise<BookingDetail> =>
-  USE_MOCK ? mockAdmin.approve(id) : send(axiosInstance.post(`/bookings/${id}/approve`))
+export const createRoom = async (input: RoomInput): Promise<AdminRoom> =>
+  toAdminRoom(await send(axiosInstance.post('/rooms', input)))
 
-export const rejectBooking = (id: string, reason: string): Promise<BookingDetail> =>
-  USE_MOCK ? mockAdmin.reject(id, reason) : send(axiosInstance.post(`/bookings/${id}/reject`, { reason }))
+export const updateRoom = async (id: string, input: Partial<RoomInput>): Promise<AdminRoom> =>
+  toAdminRoom(await send(axiosInstance.patch(`/rooms/${id}`, input)))
 
-export const getAdminRooms = (): Promise<AdminRoom[]> =>
-  USE_MOCK ? mockAdmin.rooms() : send(axiosInstance.get('/rooms'))
+export const updateRoomRules = async (id: string, input: RoomRulesInput): Promise<AdminRoom> =>
+  toAdminRoom(await send(axiosInstance.put(`/rooms/${id}/rules`, input)))
 
-export const createRoom = (input: RoomInput): Promise<AdminRoom> =>
-  USE_MOCK ? mockAdmin.createRoom(input) : send(axiosInstance.post('/rooms', input))
-
-export const updateRoom = (id: string, input: Partial<RoomInput>): Promise<AdminRoom> =>
-  USE_MOCK ? mockAdmin.updateRoom(id, input) : send(axiosInstance.patch(`/rooms/${id}`, input))
-
-export const updateRoomRules = (id: string, input: RoomRulesInput): Promise<AdminRoom> =>
-  USE_MOCK ? mockAdmin.updateRules(id, input) : send(axiosInstance.put(`/rooms/${id}/rules`, input))
-
-export const deleteRoom = (id: string): Promise<void> =>
-  USE_MOCK ? mockAdmin.deleteRoom(id) : send(axiosInstance.delete(`/rooms/${id}`))
+export const deleteRoom = async (id: string): Promise<void> => {
+  await send(axiosInstance.delete(`/rooms/${id}`))
+}
 
 /** `week` is any Bangkok date in the week; the API answers for Monday–Sunday */
 export const getWeeklyStats = (week: string): Promise<WeeklyStats> =>
-  USE_MOCK ? mockAdmin.weeklyStats(week) : send(axiosInstance.get('/stats/weekly', { params: { week } }))
+  send(axiosInstance.get('/stats/weekly', { params: { week } }))
 
-// Room photos (T9.1, not in the backend yet). The file goes straight to S3 with a presigned URL,
-// because API Gateway caps request bodies at 10 MB and the Lambda never needs to see the bytes.
+// Room photos (T9.1). The file goes straight to S3 with a presigned POST: API Gateway caps bodies
+// at 10 MB, and S3 itself enforces the type and the 5 MB limit written into the signed policy.
 export async function uploadRoomPhoto(roomId: string, file: File): Promise<RoomPhoto[]> {
-  if (USE_MOCK) return mockAdmin.addPhoto(roomId, file)
-  const { upload_url, object_key } = await send<{ upload_url: string; object_key: string }>(
+  const upload = await send<{ upload_url: string; fields: Record<string, string>; object_key: string }>(
     axiosInstance.post(`/rooms/${roomId}/photos/upload-url`, { content_type: file.type, size: file.size }),
   )
-  const put = await fetch(upload_url, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } })
-  if (!put.ok) throw new ApiError(put.status, 'อัปโหลดรูปไป S3 ไม่สำเร็จ')
-  return send(axiosInstance.post(`/rooms/${roomId}/photos`, { object_key }))
+  const form = new FormData()
+  for (const [key, value] of Object.entries(upload.fields)) form.append(key, value)
+  form.append('file', file) // must come after the policy fields
+  const s3 = await fetch(upload.upload_url, { method: 'POST', body: form }).catch(() => null)
+  if (!s3?.ok) throw new ApiError(s3?.status ?? 0, 'อัปโหลดรูปไป S3 ไม่สำเร็จ กรุณาลองใหม่')
+  return send(axiosInstance.post(`/rooms/${roomId}/photos`, { object_key: upload.object_key }))
 }
 
 export const deleteRoomPhoto = (roomId: string, photoId: string): Promise<RoomPhoto[]> =>
-  USE_MOCK ? mockAdmin.deletePhoto(roomId, photoId) : send(axiosInstance.delete(`/rooms/${roomId}/photos/${photoId}`))
+  send(axiosInstance.delete(`/rooms/${roomId}/photos/${photoId}`))
 
 export const reorderRoomPhotos = (roomId: string, ids: string[]): Promise<RoomPhoto[]> =>
-  USE_MOCK ? mockAdmin.reorderPhotos(roomId, ids) : send(axiosInstance.patch(`/rooms/${roomId}/photos/order`, { ids }))
+  send(axiosInstance.patch(`/rooms/${roomId}/photos/order`, { ids }))

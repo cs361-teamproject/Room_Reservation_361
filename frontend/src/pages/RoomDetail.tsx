@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { CSSProperties } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import RoomGallery from '../components/RoomGallery'
 import EquipmentBar from '../components/EquipmentBar'
 import BookingRules from '../components/BookingRules'
@@ -9,10 +9,9 @@ import BookingFormModal from '../components/BookingFormModal'
 import { rolesLabel } from '../utils/bookingRules'
 import { useToast } from '../components/Toast'
 import { disabledBtn, primaryBtn } from '../components/buttons'
-import { useMockUser } from '../mocks/session'
-import { getRoomRules } from '../services/bookings'
+import { useAuth } from '../auth/context'
 import { useAsync } from '../hooks/useAsync'
-import { getRoom } from '../services/rooms'
+import { getRoom, rulesOf } from '../services/rooms'
 import monitorIcon from '../assets/icon-mornitor.png'
 
 const STATUS_TAG: Record<string, { label: string; color: string }> = {
@@ -26,8 +25,11 @@ export default function RoomDetail() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { data: room, error, loading } = useAsync(id, () => getRoom(id))
+  const location = useLocation()
   const [booking, setBooking] = useState(false)
-  const user = useMockUser()
+  // Bumped after a booking so the schedule fetches again and shows it
+  const [scheduleVersion, setScheduleVersion] = useState(0)
+  const { status: authStatus, user } = useAuth()
   const { toast, show } = useToast()
 
   if (loading) {
@@ -49,14 +51,18 @@ export default function RoomDetail() {
   }
 
   const status = STATUS_TAG[room.status] ?? { label: room.status, color: '#6b6b6b' }
-  const rules = getRoomRules(room.name)
-  // Until T3 brings login, the user comes from the NavBar role switcher (mocks/session.ts)
+  const rules = rulesOf(room)
+  // Logged out: the button leads to the login page and back here
   const blockedReason =
     room.status !== 'AVAILABLE'
       ? 'ห้องนี้ปิดปรับปรุง ยังจองไม่ได้'
-      : !rules.allowed_roles.includes(user.role)
-        ? `ห้องนี้จองได้เฉพาะ${rolesLabel(rules.allowed_roles)}`
-        : null
+      : authStatus === 'loading'
+        ? 'กำลังตรวจสอบการเข้าสู่ระบบ…'
+        : user && !rules.allowed_roles.includes(user.role)
+          ? `ห้องนี้จองได้เฉพาะ${rolesLabel(rules.allowed_roles)}`
+          : null
+  const startBooking = () =>
+    user ? setBooking(true) : navigate(`/login?next=${encodeURIComponent(location.pathname + location.search)}`)
 
   return (
     <main className="room-detail-page" style={styles.main}>
@@ -101,18 +107,19 @@ export default function RoomDetail() {
                 style={{ ...primaryBtn, ...styles.bookBtn, ...(blockedReason ? disabledBtn : null) }}
                 disabled={Boolean(blockedReason)}
                 title={blockedReason ?? undefined}
-                onClick={() => setBooking(true)}
+                onClick={startBooking}
               >
-                จองห้องนี้
+                {user || authStatus === 'loading' ? 'จองห้องนี้' : 'เข้าสู่ระบบเพื่อจอง'}
               </button>
             </div>
           </div>
-          {blockedReason && <p style={styles.blocked}>{blockedReason}</p>}
+          {blockedReason && authStatus !== 'loading' && <p style={styles.blocked}>{blockedReason}</p>}
 
           <EquipmentBar room={room} />
         </div>
 
         <RoomSchedule
+          key={scheduleVersion}
           roomId={room.id}
           closed={room.status !== 'AVAILABLE'}
           focusDate={searchParams.get('date') ?? undefined}
@@ -128,6 +135,7 @@ export default function RoomDetail() {
           onClose={() => setBooking(false)}
           onDone={() => {
             setBooking(false)
+            setScheduleVersion((v) => v + 1)
             show(
               <>
                 ส่งคำขอแล้ว รอเจ้าหน้าที่อนุมัติ

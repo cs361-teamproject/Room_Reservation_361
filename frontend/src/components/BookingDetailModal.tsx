@@ -6,8 +6,7 @@ import { useAsync } from '../hooks/useAsync'
 import { getBooking, getBookingEvents } from '../services/bookings'
 import type { BookingDetail, BookingEvent, BookingEventAction, BookingType } from '../types/booking'
 import { dateTimeLabel, fullDateLabel, timeRangeLabel } from '../utils/bkkDate'
-import { canCancel, canEdit } from '../utils/bookingRules'
-import { ROLE_LABELS } from '../mocks/session'
+import { canCancel, canEdit, ROLE_LABELS } from '../utils/bookingRules'
 
 const TYPE_LABEL: Record<BookingType, string> = {
   CLASS: 'คาบเรียน',

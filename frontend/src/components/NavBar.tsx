@@ -1,9 +1,10 @@
 import type { CSSProperties } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import logo from '../assets/logo.png'
-import { USE_MOCK_API } from '../config/mock'
-import { MOCK_USERS, ROLE_LABELS, setMockRole, useMockUser } from '../mocks/session'
+import { useAuth } from '../auth/context'
 import type { UserRole } from '../types/booking'
+import { ROLE_LABELS } from '../utils/bookingRules'
+import { primaryBtn, secondaryBtn } from './buttons'
 
 interface NavItem {
   label: string
@@ -14,8 +15,8 @@ interface NavBarProps {
   items?: NavItem[]
 }
 
-// Menus per role; the role comes from the mock session until T3 adds real login
-function itemsFor(role: UserRole): NavItem[] {
+// Menus per role (logged out: rooms only). The pages check the role again (RequireRole).
+function itemsFor(role: UserRole | undefined): NavItem[] {
   const items: NavItem[] = [{ label: 'All rooms', to: '/' }]
   if (role === 'STUDENT' || role === 'LECTURER') items.push({ label: 'การจองของฉัน', to: '/my-bookings' })
   if (role === 'STAFF' || role === 'ADMIN') items.push({ label: 'Admin', to: '/admin' })
@@ -24,8 +25,10 @@ function itemsFor(role: UserRole): NavItem[] {
 
 export default function NavBar({ items }: NavBarProps) {
   const location = useLocation()
-  const user = useMockUser()
-  items ??= itemsFor(user.role)
+  const navigate = useNavigate()
+  const { status, user, logout } = useAuth()
+  items ??= itemsFor(user?.role)
+  const loginHref = `/login?next=${encodeURIComponent(location.pathname + location.search)}`
 
   return (
     <header style={styles.header}>
@@ -50,23 +53,27 @@ export default function NavBar({ items }: NavBarProps) {
           })}
         </nav>
         <div className="navbar-user" style={styles.user}>
-          <span style={styles.userName}>{user.display_name}</span>
-          {USE_MOCK_API && (
-            <label style={styles.switcher} title="ทดลองใช้ระบบในบทบาทต่าง ๆ จนกว่าจะมีระบบ login (T3)">
-              <span style={styles.switcherTag}>Mock</span>
-              <select
-                value={user.role}
-                onChange={(e) => setMockRole(e.target.value as UserRole)}
-                style={styles.switcherSelect}
-                aria-label="สลับบทบาท (mock)"
+          {user ? (
+            <>
+              <span style={styles.userName}>{user.display_name ?? user.username}</span>
+              <span style={styles.roleTag}>{ROLE_LABELS[user.role]}</span>
+              <button
+                style={{ ...secondaryBtn, ...styles.smallBtn }}
+                onClick={async () => {
+                  await logout()
+                  navigate('/')
+                }}
               >
-                {(Object.keys(MOCK_USERS) as UserRole[]).map((r) => (
-                  <option key={r} value={r}>
-                    {ROLE_LABELS[r]}
-                  </option>
-                ))}
-              </select>
-            </label>
+                ออกจากระบบ
+              </button>
+            </>
+          ) : (
+            status === 'anonymous' &&
+            !location.pathname.startsWith('/login') && (
+              <Link to={loginHref} style={{ ...primaryBtn, ...styles.smallBtn, textDecoration: 'none' }}>
+                เข้าสู่ระบบ
+              </Link>
+            )
           )}
         </div>
       </div>
@@ -107,25 +114,14 @@ const styles: Record<string, CSSProperties> = {
   linkActive: { borderBottomColor: '#F59E0B' },
   user: { marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12 },
   userName: { fontSize: 15, fontWeight: 600, whiteSpace: 'nowrap' },
-  switcher: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-    height: 34,
-    padding: '0 4px 0 8px',
+  roleTag: {
+    padding: '3px 10px',
     borderRadius: 999,
-    border: '1.5px dashed #F59E0B',
-    background: '#FFF7ED',
-  },
-  switcherTag: { fontSize: 11, fontWeight: 700, color: '#92400E', textTransform: 'uppercase' },
-  switcherSelect: {
-    border: 'none',
-    background: 'transparent',
-    fontFamily: 'inherit',
-    fontSize: 14,
+    background: '#F3F3F3',
+    fontSize: 13,
     fontWeight: 600,
-    color: '#1a1a1a',
-    cursor: 'pointer',
-    outline: 'none',
+    color: '#4b4b4b',
+    whiteSpace: 'nowrap',
   },
+  smallBtn: { height: 36, padding: '0 14px', fontSize: 14 },
 }

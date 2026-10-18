@@ -1,5 +1,6 @@
 import { getData } from './api'
 import type { Room } from '../types/room'
+import type { RoomRules, UserRole } from '../types/booking'
 import { bkkIso, type TimeSlot } from '../utils/bkkDate'
 
 // Item of GET /api/rooms and GET /api/rooms/:id
@@ -15,6 +16,8 @@ interface ApiRoom {
   projector: number
   mic: number
   photos: { object_key: string; url: string }[]
+  max_hours: number
+  allowed_roles: UserRole[]
 }
 
 // Filter labels shown in the UI (data/rooms.ts) → API values
@@ -49,6 +52,8 @@ function toRoom(r: ApiRoom): Room {
     mic: r.mic,
     image: images[0],
     images,
+    maxHours: r.max_hours,
+    allowedRoles: r.allowed_roles,
   }
 }
 
@@ -77,3 +82,12 @@ export async function searchRooms({ query, type, equipment, slot }: RoomSearch):
 }
 
 export const getRoom = async (id: string): Promise<Room> => toRoom(await getData<ApiRoom>(`/rooms/${id}`))
+
+export const rulesOf = (room: Room): RoomRules => ({ max_hours: room.maxHours, allowed_roles: room.allowedRoles })
+
+/** Rules of a room by name, for screens that only know the name (a booking in /my-bookings) */
+export async function getRoomRulesByName(name: string): Promise<RoomRules> {
+  const room = (await getData<ApiRoom[]>('/rooms')).find((r) => r.room_name === name)
+  if (!room) throw new Error(`ไม่พบห้อง ${name}`)
+  return { max_hours: room.max_hours, allowed_roles: room.allowed_roles }
+}

@@ -5,7 +5,7 @@ import RoomFormModal from '../../components/RoomFormModal'
 import { useToast } from '../../components/Toast'
 import { dangerBtn, disabledBtn, ghostDangerBtn, primaryBtn, secondaryBtn } from '../../components/buttons'
 import { useAsync } from '../../hooks/useAsync'
-import { useMockUser } from '../../mocks/session'
+import { useAuth } from '../../auth/context'
 import { ApiError } from '../../services/api'
 import { deleteRoom, getAdminRooms, updateRoom } from '../../services/admin'
 import type { AdminRoom, RoomStatus } from '../../types/admin'
@@ -15,12 +15,12 @@ import { ROOM_TYPE_LABELS } from '../../utils/roomLabels'
 type Dialog = { kind: 'create' } | { kind: 'edit'; room: AdminRoom } | { kind: 'delete'; room: AdminRoom } | null
 
 export default function AdminRooms() {
-  const user = useMockUser()
-  const isAdmin = user.role === 'ADMIN'
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'ADMIN'
   const [dialog, setDialog] = useState<Dialog>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const { toast, show } = useToast()
-  const { data, previous, error, loading, reload } = useAsync(`rooms|${user.role}`, getAdminRooms)
+  const { data, previous, error, loading, reload } = useAsync(`rooms|${user?.id}`, getAdminRooms)
   const rooms = data ?? (loading ? previous : undefined)
 
   const setStatus = async (room: AdminRoom, status: RoomStatus) => {

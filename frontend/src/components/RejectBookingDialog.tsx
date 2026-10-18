@@ -4,7 +4,7 @@ import Modal from './Modal'
 import { dangerBtn, disabledBtn, secondaryBtn } from './buttons'
 import { ApiError } from '../services/api'
 import { rejectBooking } from '../services/admin'
-import type { BookingDetail, ManageBooking } from '../types/booking'
+import type { ManageBooking } from '../types/booking'
 import { fullDateLabel, timeRangeLabel } from '../utils/bkkDate'
 
 const QUICK_REASONS = [
@@ -18,7 +18,7 @@ const MIN_LENGTH = 5
 interface Props {
   booking: ManageBooking
   onClose: () => void
-  onDone: (booking: BookingDetail) => void
+  onDone: () => void
   /** 409: someone else already approved or rejected it */
   onConflict: (message: string) => void
 }
@@ -33,7 +33,8 @@ export default function RejectBookingDialog({ booking, onClose, onDone, onConfli
     setBusy(true)
     setError(null)
     try {
-      onDone(await rejectBooking(booking.id, reason.trim()))
+      await rejectBooking(booking.id, reason.trim())
+      onDone()
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) return onConflict(e.message)
       setError(e instanceof ApiError ? e.message : 'บันทึกไม่สำเร็จ กรุณาลองใหม่')
