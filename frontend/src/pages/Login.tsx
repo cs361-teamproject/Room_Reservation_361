@@ -23,6 +23,8 @@ const STRONG_PASSWORD = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$
 
 /** Cognito error names → messages that do not reveal whether the account exists */
 function loginMessage(e: unknown): string {
+  // The screen stays vague on purpose; the console says what Cognito really answered
+  if (import.meta.env.DEV) console.warn('Login failed:', e)
   const name = e instanceof Error ? e.name : ''
   if (name === 'NotAuthorizedException' || name === 'UserNotFoundException') return 'รหัสประจำตัวหรือรหัสผ่านไม่ถูกต้อง'
   if (name === 'InvalidPasswordException') return `รหัสผ่านใหม่ไม่ตรงตามเงื่อนไข: ${PASSWORD_RULE}`
