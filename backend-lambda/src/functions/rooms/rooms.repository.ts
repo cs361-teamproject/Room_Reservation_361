@@ -137,7 +137,56 @@ async function findByIdWithDetails(id: string) {
 export type RoomWithDetails = Awaited<ReturnType<typeof findAllWithDetails>>[number];
 export type RoomDetail = NonNullable<Awaited<ReturnType<typeof findByIdWithDetails>>>;
 
+export type NewRoom = typeof rooms.$inferInsert;
+
+/** Insert only; name conflicts surface as 23505 -> 409 via fromDbError. */
+async function insertRoom(values: NewRoom) {
+  const [row] = await getDb().insert(rooms).values(values).returning();
+  return row;
+}
+
+async function updateRoom(id: string, values: Partial<NewRoom>) {
+  const [row] = await getDb().update(rooms).set(values).where(eq(rooms.id, id)).returning();
+  return row;
+}
+
+async function softDeleteRoom(id: string) {
+  const [row] = await getDb().update(rooms).set({ deletedAt: new Date() }).where(eq(rooms.id, id)).returning();
+  return row;
+}
+
+/** A live room (not deleted) by id, for the 404-before-write checks in the service. */
+async function findLiveRoom(id: string) {
+  const [row] = await getDb()
+    .select({ id: rooms.id })
+    .from(rooms)
+    .where(and(eq(rooms.id, id), isNull(rooms.deletedAt)))
+    .limit(1);
+  return row;
+}
+
+/** True when a future PENDING/APPROVED booking still holds this room. Blocks soft delete. */
+async function hasFutureActiveBookings(roomId: string, now: Date) {
+  const [row] = await getDb()
+    .select({ one: bookings.id })
+    .from(bookings)
+    .where(
+      and(
+        eq(bookings.roomId, roomId),
+        inArray(bookings.status, ['PENDING', 'APPROVED']),
+        gt(bookings.endTime, now),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
+}
+
 export const roomsRepository = {
   findAllWithDetails,
   findByIdWithDetails,
+  insertRoom,
+  updateRoom,
+  softDeleteRoom,
+  findLiveRoom,
+  hasFutureActiveBookings,
 };

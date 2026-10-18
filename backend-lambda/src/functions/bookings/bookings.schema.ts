@@ -66,6 +66,24 @@ export const listQuery = z
 
 export type ListQuery = z.infer<typeof listQuery>;
 
+export const idParam = z.object({ id: z.string().min(1) });
+
+export type IdParam = z.infer<typeof idParam>;
+
+// ---- T8: staff manage queue ----
+export const manageQuery = z.object({
+  status: csvStatus().default(['PENDING']),
+  limit: z.coerce.number().int().min(1).max(50).default(10),
+});
+
+export type ManageQuery = z.infer<typeof manageQuery>;
+
+export const rejectBody = z.object({
+  reason: z.string().trim().min(1, 'reason is required').max(500, 'reason must be at most 500 characters'),
+});
+
+export type RejectBody = z.infer<typeof rejectBody>;
+
 // ISO 8601 with an offset (Z or +07:00), so the instant is unambiguous whatever TZ the Lambda runs in
 const isoDateTime = z.iso.datetime({ offset: true, error: 'Must be an ISO 8601 datetime with offset, e.g. 2026-10-20T14:00:00+07:00' });
 

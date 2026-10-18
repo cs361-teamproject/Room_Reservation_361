@@ -293,6 +293,46 @@ Resources:
             Auth:
               Authorizer: NONE
 
+  StatsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub roomres-stats-${StageName}
+      CodeUri: dist/stats/
+      Handler: index.handler
+      Description: Weekly usage stats (GET /api/stats/weekly, ADMIN only).
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - AWSLambdaVPCAccessExecutionRole
+      Events:
+        StatsCollection:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FacilitiesApi
+            Path: /api/stats
+            Method: ANY
+        StatsItems:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FacilitiesApi
+            Path: /api/stats/{proxy+}
+            Method: ANY
+        StatsCollectionPreflight:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FacilitiesApi
+            Path: /api/stats
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+        StatsItemsPreflight:
+          Type: Api
+          Properties:
+            RestApiId: !Ref FacilitiesApi
+            Path: /api/stats/{proxy+}
+            Method: OPTIONS
+            Auth:
+              Authorizer: NONE
+
   # Not behind API Gateway. Run migrations with:
   #   aws lambda invoke --function-name roomres-migrate-<stage> --payload '{}' out.json
   MigrateFunction:

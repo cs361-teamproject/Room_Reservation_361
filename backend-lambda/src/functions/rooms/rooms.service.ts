@@ -1,7 +1,7 @@
 import { objectUrl } from '../../shared/aws/s3';
-import { notFound } from '../../shared/http/errors';
-import { type RoomDetail, type RoomFilters, type RoomWithDetails, roomsRepository as repo } from './rooms.repository';
-import type { ListQuery } from './rooms.schema';
+import { conflict, notFound } from '../../shared/http/errors';
+import { type NewRoom, type RoomDetail, type RoomFilters, type RoomWithDetails, roomsRepository as repo } from './rooms.repository';
+import type { CreateRoomBody, ListQuery, RoomRulesBody, UpdateRoomBody } from './rooms.schema';
 
 // Facility names as seeded (scripts/db/seed.ts) → the count fields the room cards show
 const COUNTED_FACILITIES: Record<string, 'computers' | 'projector' | 'mic'> = {
@@ -52,6 +52,8 @@ const toDetailItem = (room: RoomDetail) => ({
   size: room.size,
   status: room.status,
   seat_capacity: room.seatCapacity,
+  max_hours: room.maxHours,
+  allowed_roles: room.allowedRoles,
   ...countFacilities(room.roomFacilities),
   facilities: room.roomFacilities.map((rf) => ({
     name: rf.facility.name,
@@ -79,6 +81,63 @@ export const roomsService = {
   },
 
   async get(id: string) {
+    const room = await repo.findByIdWithDetails(id);
+    if (!room) throw notFound(`Room with ID "${id}" not found`);
+    return toDetailItem(room);
+  },
+
+  /** Staff/Admin. Duplicate names answer 409 via the unique index (fromDbError 23505). */
+  async create(body: CreateRoomBody) {
+    const inserted = await repo.insertRoom({
+      roomName: body.room_name,
+      description: body.description ?? null,
+      roomType: body.room_type,
+      size: body.size,
+      seatCapacity: body.seat_capacity,
+      status: body.status,
+    } satisfies NewRoom);
+    const room = await repo.findByIdWithDetails(inserted.id);
+    if (!room) throw notFound(`Room with ID "${inserted.id}" not found`);
+    return toDetailItem(room);
+  },
+
+  /** Staff/Admin: name, description, capacity, status only — rules go through updateRules. */
+  async update(id: string, body: UpdateRoomBody) {
+    const live = await repo.findLiveRoom(id);
+    if (!live) throw notFound(`Room with ID "${id}" not found`);
+    const values: Partial<NewRoom> = {};
+    if (body.room_name !== undefined) values.roomName = body.room_name;
+    if (body.description !== undefined) values.description = body.description;
+    if (body.seat_capacity !== undefined) values.seatCapacity = body.seat_capacity;
+    if (body.status !== undefined) values.status = body.status;
+    await repo.updateRoom(id, values);
+    const room = await repo.findByIdWithDetails(id);
+    if (!room) throw notFound(`Room with ID "${id}" not found`);
+    return toDetailItem(room);
+  },
+
+  /**
+   * Staff/Admin soft delete. A room still holding a future PENDING/APPROVED
+   * booking answers 409 so active reservations are never orphaned.
+   */
+  async remove(id: string) {
+    const live = await repo.findLiveRoom(id);
+    if (!live) throw notFound(`Room with ID "${id}" not found`);
+    if (await repo.hasFutureActiveBookings(id, new Date())) {
+      throw conflict('ห้องนี้ยังมีการจองในอนาคต ไม่สามารถลบได้');
+    }
+    const deleted = await repo.softDeleteRoom(id);
+    return { id: deleted.id, deleted_at: deleted.deletedAt };
+  },
+
+  /** Admin only (route guard): per-room booking rules shown on GET /:id. */
+  async updateRules(id: string, body: RoomRulesBody) {
+    const live = await repo.findLiveRoom(id);
+    if (!live) throw notFound(`Room with ID "${id}" not found`);
+    await repo.updateRoom(id, {
+      maxHours: body.max_hours,
+      allowedRoles: [...body.allowed_roles],
+    } satisfies Partial<NewRoom>);
     const room = await repo.findByIdWithDetails(id);
     if (!room) throw notFound(`Room with ID "${id}" not found`);
     return toDetailItem(room);
