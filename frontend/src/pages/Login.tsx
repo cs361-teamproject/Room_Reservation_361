@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import logo from '../assets/logo.png'
 import { useAuth } from '../auth/context'
+import PasswordInput from '../components/PasswordInput'
 import { disabledBtn, primaryBtn } from '../components/buttons'
 import { authConfigured } from '../config/amplify'
 
@@ -94,8 +95,7 @@ export default function Login() {
             </label>
             <label style={styles.field}>
               <span style={styles.label}>รหัสผ่าน</span>
-              <input
-                type="password"
+              <PasswordInput
                 {...loginForm.register('password', { required: 'กรุณาใส่รหัสผ่าน' })}
                 autoComplete="current-password"
                 style={styles.input}
@@ -120,8 +120,7 @@ export default function Login() {
             </div>
             <label style={styles.field}>
               <span style={styles.label}>รหัสผ่านใหม่</span>
-              <input
-                type="password"
+              <PasswordInput
                 {...passwordForm.register('password', {
                   required: 'กรุณาใส่รหัสผ่านใหม่',
                   pattern: { value: STRONG_PASSWORD, message: PASSWORD_RULE },
@@ -136,8 +135,7 @@ export default function Login() {
             </label>
             <label style={styles.field}>
               <span style={styles.label}>ยืนยันรหัสผ่านใหม่</span>
-              <input
-                type="password"
+              <PasswordInput
                 {...passwordForm.register('confirm', {
                   validate: (v, all) => v === all.password || 'รหัสผ่านทั้งสองช่องไม่ตรงกัน',
                 })}
