@@ -1,3 +1,4 @@
+import { CognitoJwtVerifier } from 'aws-jwt-verify';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { createMiddleware } from 'hono/factory';
@@ -5,7 +6,7 @@ import type { AppEnv } from '../create-app';
 import { getDb } from '../db/client';
 import { type UserRole, users } from '../db/schema';
 import { getEnv } from '../env';
-import { forbidden, unauthorized } from '../http/errors';
+import { forbidden, HttpError, unauthorized } from '../http/errors';
 
 export interface AuthUser {
   id: string;
@@ -15,15 +16,28 @@ export interface AuthUser {
   displayName: string | null;
 }
 
+let verifier: ReturnType<typeof CognitoJwtVerifier.create<{ userPoolId: string; tokenUse: 'id'; clientId: string }>> | undefined;
+
+/** Checks Cognito ID tokens ourselves; only used where no API Gateway authorizer did it already */
+function idTokenVerifier() {
+  const { COGNITO_USER_POOL_ID, COGNITO_CLIENT_ID } = getEnv();
+  if (!COGNITO_USER_POOL_ID || !COGNITO_CLIENT_ID) {
+    throw unauthorized('Bearer tokens need COGNITO_USER_POOL_ID and COGNITO_CLIENT_ID in the env');
+  }
+  verifier ??= CognitoJwtVerifier.create({ userPoolId: COGNITO_USER_POOL_ID, tokenUse: 'id', clientId: COGNITO_CLIENT_ID });
+  return verifier;
+}
+
 /**
- * Who is calling, as a username, or undefined when nobody is logged in.
- *
- * On AWS, API Gateway's Cognito authorizer verifies the token before the Lambda runs
- * and passes the claims in `event.requestContext.authorizer.claims` (T2 reads them here).
- * The local dev server has no API Gateway, so with STAGE=local the `X-Dev-User: <username>`
- * header stands in for a login. It is ignored on every other stage.
+ * Who is calling, as a username, or undefined when nobody is logged in. In order:
+ * 1. On AWS, API Gateway's Cognito authorizer verifies the token before the Lambda runs
+ *    and passes the claims in `event.requestContext.authorizer.claims`.
+ * 2. STAGE=local has no API Gateway, so a `Bearer <ID token>` is verified here (signature,
+ *    expiry, user pool and app client) — the frontend's real login works against `npm run dev`.
+ * 3. STAGE=local also accepts `X-Dev-User: <username>` for curl and tests.
+ * Neither 2 nor 3 is looked at on any other stage.
  */
-function callerUsername(c: Context<AppEnv>): string | undefined {
+async function callerUsername(c: Context<AppEnv>): Promise<string | undefined> {
   const requestContext = c.env?.event?.requestContext;
   if (requestContext && 'authorizer' in requestContext) {
     const { claims } = requestContext.authorizer as { claims?: Record<string, string> };
@@ -31,14 +45,25 @@ function callerUsername(c: Context<AppEnv>): string | undefined {
     if (username) return username;
   }
 
-  if (getEnv().STAGE === 'local') return c.req.header('X-Dev-User') || undefined;
-  return undefined;
+  if (getEnv().STAGE !== 'local') return undefined;
+
+  const bearer = c.req.header('Authorization')?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (bearer) {
+    try {
+      const claims = await idTokenVerifier().verify(bearer);
+      return String(claims['cognito:username']);
+    } catch (err) {
+      if (err instanceof HttpError) throw err; // missing Cognito config, from idTokenVerifier()
+      throw unauthorized('Invalid or expired token');
+    }
+  }
+  return c.req.header('X-Dev-User') || undefined;
 }
 
 /** 401 without a login, 403 when the login has no active row in User. Sets `c.var.user`. */
 export const requireAuth = () =>
   createMiddleware<AppEnv>(async (c, next) => {
-    const username = callerUsername(c);
+    const username = await callerUsername(c);
     if (!username) throw unauthorized();
 
     const [user] = await getDb()
