@@ -82,7 +82,7 @@ const seatCapacity = z.coerce.number().int().min(1, 'seat_capacity must be at le
 
 export const createRoomBody = z.object({
   room_name: roomName,
-  description: z.string().trim().max(2000).optional(),
+  description: z.string().trim().max(2000).nullable().optional(),
   room_type: z.enum(ROOM_TYPES, { error: 'Must be one of LAB, LECTURE, MEETING, COWORKING' }),
   size: z.enum(ROOM_SIZES, { error: 'Must be one of SMALL, MEDIUM, LARGE' }),
   seat_capacity: seatCapacity,
@@ -95,6 +95,8 @@ export const updateRoomBody = z
   .object({
     room_name: roomName.optional(),
     description: z.string().trim().max(2000).nullable().optional(),
+    room_type: z.enum(ROOM_TYPES, { error: 'Must be one of LAB, LECTURE, MEETING, COWORKING' }).optional(),
+    size: z.enum(ROOM_SIZES, { error: 'Must be one of SMALL, MEDIUM, LARGE' }).optional(),
     seat_capacity: seatCapacity.optional(),
     status: z.enum(ROOM_STATUSES, { error: 'Must be one of AVAILABLE, MAINTENANCE' }).optional(),
   })

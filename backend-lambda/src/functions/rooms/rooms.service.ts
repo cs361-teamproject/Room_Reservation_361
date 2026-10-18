@@ -28,8 +28,8 @@ function countFacilities(facilities: { facility: { name: string }; quantity: num
   return counts;
 }
 
-const mapPhotos = (photos: { objectKey: string }[]) =>
-  photos.map((p) => ({ object_key: p.objectKey, url: objectUrl(p.objectKey) }));
+const mapPhotos = (photos: { id: string; objectKey: string }[]) =>
+  photos.map((p) => ({ id: p.id, object_key: p.objectKey, url: objectUrl(p.objectKey) }));
 
 // API responses keep snake_case keys, like the rest of the API contract
 const toListItem = (room: RoomWithDetails) => ({
@@ -40,6 +40,9 @@ const toListItem = (room: RoomWithDetails) => ({
   size: room.size,
   status: room.status,
   seat_capacity: room.seatCapacity,
+  // The admin room table edits from the list, so it needs the rules too
+  max_hours: room.maxHours,
+  allowed_roles: room.allowedRoles,
   ...countFacilities(room.roomFacilities),
   photos: mapPhotos(room.photos),
 });
@@ -107,6 +110,8 @@ export const roomsService = {
     if (!live) throw notFound(`Room with ID "${id}" not found`);
     const values: Partial<NewRoom> = {};
     if (body.room_name !== undefined) values.roomName = body.room_name;
+    if (body.room_type !== undefined) values.roomType = body.room_type;
+    if (body.size !== undefined) values.size = body.size;
     if (body.description !== undefined) values.description = body.description;
     if (body.seat_capacity !== undefined) values.seatCapacity = body.seat_capacity;
     if (body.status !== undefined) values.status = body.status;

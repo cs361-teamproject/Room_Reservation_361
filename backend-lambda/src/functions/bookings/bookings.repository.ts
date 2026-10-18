@@ -208,11 +208,15 @@ export async function findBookingById(bookingId: string, db: Db | Tx = getDb()) 
       rejectReason: bookings.rejectReason,
       cancelReason: bookings.cancelReason,
       remark: bookings.remark,
+      createdAt: bookings.createdAt,
       roomId: rooms.id,
       roomName: rooms.roomName,
+      userDisplayName: users.displayName,
+      userRole: users.role,
     })
     .from(bookings)
     .innerJoin(rooms, eq(bookings.roomId, rooms.id))
+    .innerJoin(users, eq(bookings.userId, users.id))
     .where(eq(bookings.id, bookingId))
     .limit(1);
 

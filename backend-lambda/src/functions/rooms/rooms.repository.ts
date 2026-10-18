@@ -109,7 +109,7 @@ async function findAllWithDetails(filters: RoomFilters = {}) {
       },
       photos: {
         orderBy: asc(roomPhotos.sortOrder),
-        columns: { objectKey: true },
+        columns: { id: true, objectKey: true },
       },
     },
   });
@@ -127,7 +127,7 @@ async function findByIdWithDetails(id: string) {
       },
       photos: {
         orderBy: asc(roomPhotos.sortOrder),
-        columns: { objectKey: true },
+        columns: { id: true, objectKey: true },
       },
     },
   });
