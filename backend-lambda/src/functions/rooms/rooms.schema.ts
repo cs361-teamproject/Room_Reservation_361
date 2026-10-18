@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PHOTO_CONTENT_TYPES, PHOTO_MAX_BYTES } from '../../shared/aws/s3';
 
 export const idParam = z.object({ id: z.string().min(1) });
 
@@ -110,3 +111,21 @@ export const roomRulesBody = z.object({
 });
 
 export type RoomRulesBody = z.infer<typeof roomRulesBody>;
+
+// ---- T9.1: room photos (presigned POST straight to S3) ----
+export const PHOTO_MAX_COUNT = 10;
+
+export const photoParam = z.object({ id: z.string().min(1), photoId: z.string().min(1) });
+
+export const photoUploadBody = z.object({
+  content_type: z.enum(PHOTO_CONTENT_TYPES, { error: 'รองรับเฉพาะไฟล์ JPG, PNG หรือ WebP' }),
+  size: z.number().int().min(1).max(PHOTO_MAX_BYTES, 'ไฟล์ต้องมีขนาดไม่เกิน 5 MB'),
+});
+
+export type PhotoUploadBody = z.infer<typeof photoUploadBody>;
+
+export const photoRegisterBody = z.object({ object_key: z.string().min(1).max(300) });
+
+export const photoOrderBody = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(PHOTO_MAX_COUNT),
+});

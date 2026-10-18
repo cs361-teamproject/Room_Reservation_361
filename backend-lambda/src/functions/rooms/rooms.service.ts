@@ -1,7 +1,35 @@
-import { objectUrl } from '../../shared/aws/s3';
-import { conflict, notFound } from '../../shared/http/errors';
+import { randomUUID } from 'node:crypto';
+import { deleteObjectQuietly, objectUrl, presignPhotoPost } from '../../shared/aws/s3';
+import { badRequest, conflict, notFound } from '../../shared/http/errors';
 import { type NewRoom, type RoomDetail, type RoomFilters, type RoomWithDetails, roomsRepository as repo } from './rooms.repository';
-import type { CreateRoomBody, ListQuery, RoomRulesBody, UpdateRoomBody } from './rooms.schema';
+import {
+  type CreateRoomBody,
+  type ListQuery,
+  PHOTO_MAX_COUNT,
+  type PhotoUploadBody,
+  type RoomRulesBody,
+  type UpdateRoomBody,
+} from './rooms.schema';
+
+const PHOTO_EXTENSIONS: Record<PhotoUploadBody['content_type'], string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+};
+
+/**
+ * Uploaded photos live under rooms/<roomId>/, one key per upload. Seeded photos use shared
+ * keys (several rooms point at lec4.jpg), so only keys under this prefix are deleted from S3.
+ */
+const photoPrefix = (roomId: string) => `rooms/${roomId}/`;
+
+async function photosOf(roomId: string) {
+  return mapPhotos(await repo.listPhotos(roomId));
+}
+
+async function requireLiveRoom(id: string) {
+  if (!(await repo.findLiveRoom(id))) throw notFound(`Room with ID "${id}" not found`);
+}
 
 // Facility names as seeded (scripts/db/seed.ts) → the count fields the room cards show
 const COUNTED_FACILITIES: Record<string, 'computers' | 'projector' | 'mic'> = {
@@ -146,5 +174,48 @@ export const roomsService = {
     const room = await repo.findByIdWithDetails(id);
     if (!room) throw notFound(`Room with ID "${id}" not found`);
     return toDetailItem(room);
+  },
+
+  /** Step 1 of an upload: a presigned POST the browser sends the file to (5 minutes, ≤5 MB, this type only) */
+  async photoUploadUrl(roomId: string, body: PhotoUploadBody) {
+    await requireLiveRoom(roomId);
+    if ((await repo.listPhotos(roomId)).length >= PHOTO_MAX_COUNT) {
+      throw badRequest(`ห้องหนึ่งมีรูปได้ไม่เกิน ${PHOTO_MAX_COUNT} รูป`);
+    }
+    const objectKey = `${photoPrefix(roomId)}${randomUUID()}.${PHOTO_EXTENSIONS[body.content_type]}`;
+    const { url, fields } = await presignPhotoPost(objectKey, body.content_type);
+    return { upload_url: url, fields, object_key: objectKey };
+  },
+
+  /** Step 2: after S3 accepted the file, attach it to the room as the last photo */
+  async addPhoto(roomId: string, objectKey: string) {
+    await requireLiveRoom(roomId);
+    // Only keys handed out by photoUploadUrl for this room
+    const pattern = new RegExp(`^${photoPrefix(roomId)}[0-9a-f-]{36}\\.(jpg|png|webp)$`);
+    if (!pattern.test(objectKey)) throw badRequest('object_key: ไม่ใช่ไฟล์ที่อัปโหลดให้ห้องนี้');
+    const photos = await repo.listPhotos(roomId);
+    if (photos.some((p) => p.objectKey === objectKey)) throw conflict('รูปนี้ถูกเพิ่มให้ห้องแล้ว');
+    if (photos.length >= PHOTO_MAX_COUNT) throw badRequest(`ห้องหนึ่งมีรูปได้ไม่เกิน ${PHOTO_MAX_COUNT} รูป`);
+    const last = photos.reduce((max, p) => Math.max(max, p.sortOrder), 0);
+    await repo.insertPhoto({ roomId, objectKey, sortOrder: last + 1 });
+    return photosOf(roomId);
+  },
+
+  async removePhoto(roomId: string, photoId: string) {
+    await requireLiveRoom(roomId);
+    const removed = await repo.deletePhoto(roomId, photoId);
+    if (!removed) throw notFound('Photo not found');
+    if (removed.objectKey.startsWith(photoPrefix(roomId))) await deleteObjectQuietly(removed.objectKey);
+    return photosOf(roomId);
+  },
+
+  /** `ids` must be exactly this room's photos, in the new order */
+  async reorderPhotos(roomId: string, ids: string[]) {
+    await requireLiveRoom(roomId);
+    const current = (await repo.listPhotos(roomId)).map((p) => p.id);
+    const same = ids.length === current.length && new Set(ids).size === ids.length && ids.every((id) => current.includes(id));
+    if (!same) throw badRequest('ids: ต้องเป็นรูปทั้งหมดของห้องนี้ ไม่ซ้ำ และไม่ขาด');
+    await repo.reorderPhotos(roomId, ids);
+    return photosOf(roomId);
   },
 };

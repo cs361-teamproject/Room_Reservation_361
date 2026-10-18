@@ -18,6 +18,9 @@ const envSchema = z.object({
   // Set only when running against LocalStack; unset on real AWS
   AWS_ENDPOINT_URL: z.string().url().optional(),
   S3_BUCKET: z.string().optional(),
+  // Endpoint written into presigned upload URLs, for when the browser cannot reach AWS_ENDPOINT_URL
+  // (LocalStack Lambdas use http://localstack:4566; the browser needs http://localhost:4566)
+  S3_PRESIGN_ENDPOINT: z.string().url().optional(),
   S3_PUBLIC_URL: z.string().url().optional(),
 });
 

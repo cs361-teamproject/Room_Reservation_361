@@ -2,7 +2,17 @@ import { requireAuth, requireRole } from '../../shared/auth';
 import { createApp } from '../../shared/create-app';
 import { validate } from '../../shared/http/validate';
 import { successResponse } from '../../shared/http/response';
-import { createRoomBody, idParam, listQuery, roomRulesBody, updateRoomBody } from './rooms.schema';
+import {
+  createRoomBody,
+  idParam,
+  listQuery,
+  photoOrderBody,
+  photoParam,
+  photoRegisterBody,
+  photoUploadBody,
+  roomRulesBody,
+  updateRoomBody,
+} from './rooms.schema';
 import { roomsService as service } from './rooms.service';
 
 export const app = createApp('/api/rooms');
@@ -47,4 +57,28 @@ app.patch(
 
 app.delete('/:id', requireAuth(), requireRole('STAFF', 'ADMIN'), validate('param', idParam), async (c) => {
   return c.json(successResponse(await service.remove(c.req.valid('param').id), 'Room deleted successfully'));
+});
+
+// ---- Photos (STAFF, ADMIN). Upload = POST upload-url → browser POSTs the file to S3 → POST photos ----
+const canManage = [requireAuth(), requireRole('STAFF', 'ADMIN')] as const;
+
+app.post('/:id/photos/upload-url', ...canManage, validate('param', idParam), validate('json', photoUploadBody), async (c) => {
+  const data = await service.photoUploadUrl(c.req.valid('param').id, c.req.valid('json'));
+  return c.json(successResponse(data, 'Upload URL created successfully'), 201);
+});
+
+app.post('/:id/photos', ...canManage, validate('param', idParam), validate('json', photoRegisterBody), async (c) => {
+  const photos = await service.addPhoto(c.req.valid('param').id, c.req.valid('json').object_key);
+  return c.json(successResponse(photos, 'Photo added successfully'), 201);
+});
+
+// Literal "order" before :photoId would only matter for the same method; PATCH has no :photoId route
+app.patch('/:id/photos/order', ...canManage, validate('param', idParam), validate('json', photoOrderBody), async (c) => {
+  const photos = await service.reorderPhotos(c.req.valid('param').id, c.req.valid('json').ids);
+  return c.json(successResponse(photos, 'Photos reordered successfully'));
+});
+
+app.delete('/:id/photos/:photoId', ...canManage, validate('param', photoParam), async (c) => {
+  const { id, photoId } = c.req.valid('param');
+  return c.json(successResponse(await service.removePhoto(id, photoId), 'Photo deleted successfully'));
 });

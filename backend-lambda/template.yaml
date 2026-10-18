@@ -20,6 +20,10 @@ Parameters:
   StageName:
     Type: String
     Default: dev
+  S3BucketName:
+    Type: String
+    Default: roomreserve-image-private
+    Description: Bucket that room photos are uploaded to (needs a CORS rule allowing POST from the frontend).
   S3PublicUrl:
     Type: String
     Default: https://roomreserve-image-private.s3.ap-southeast-1.amazonaws.com
@@ -44,6 +48,7 @@ Globals:
         DATABASE_URL: !Ref DatabaseUrl
         ALLOWED_ORIGINS: !Ref AllowedOrigins
         S3_PUBLIC_URL: !Ref S3PublicUrl
+        S3_BUCKET: !Ref S3BucketName
 
 Resources:
   FacilitiesApi:
@@ -159,6 +164,10 @@ Resources:
       Policies:
         - AWSLambdaBasicExecutionRole
         - AWSLambdaVPCAccessExecutionRole
+        # Presigning needs PutObject rights; deleting an uploaded photo needs DeleteObject.
+        # From the VPC (no NAT) DeleteObject also needs an S3 gateway VPC endpoint.
+        - S3CrudPolicy:
+            BucketName: !Ref S3BucketName
       Events:
         RoomsCollection:
           Type: Api
