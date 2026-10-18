@@ -27,7 +27,9 @@ export default function NavBar({ items }: NavBarProps) {
   const location = useLocation()
   const navigate = useNavigate()
   const { status, user, logout } = useAuth()
-  items ??= itemsFor(user?.role)
+  // The login page keeps only the logo: no menu to wander off to
+  const onLogin = location.pathname.startsWith('/login')
+  items ??= onLogin ? [] : itemsFor(user?.role)
   const loginHref = `/login?next=${encodeURIComponent(location.pathname + location.search)}`
 
   return (
@@ -69,7 +71,7 @@ export default function NavBar({ items }: NavBarProps) {
             </>
           ) : (
             status === 'anonymous' &&
-            !location.pathname.startsWith('/login') && (
+            !onLogin && (
               <Link to={loginHref} style={{ ...primaryBtn, ...styles.smallBtn, textDecoration: 'none' }}>
                 เข้าสู่ระบบ
               </Link>
