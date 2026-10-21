@@ -45,7 +45,8 @@ app.get('/:id/events', requireAuth(), async (c) => {
   return c.json(successResponse(data, 'Booking events retrieved successfully'));
 });
 
-app.post('/', requireAuth(), requireRole('STUDENT', 'LECTURER'), validate('json', createBookingBody), async (c) => {
+// STAFF may book too, but only on someone's behalf (booked_for_user_id); the service checks that
+app.post('/', requireAuth(), requireRole('STUDENT', 'LECTURER', 'STAFF'), validate('json', createBookingBody), async (c) => {
   // requireAuth() guarantees the user is set
   const booking = await service.create(c.get('user')!, c.req.valid('json'));
   return c.json(successResponse(booking, 'Booking created successfully'), 201);

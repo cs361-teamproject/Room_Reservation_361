@@ -67,7 +67,8 @@ export const rooms = pgTable(
     id: id(),
     roomName: text('room_name').notNull(),
     description: text('description'),
-    seatCapacity: integer('seat_capacity').notNull(),
+    // Null when the capacity is not known (classrooms, meeting rooms): never guess one
+    seatCapacity: integer('seat_capacity'),
     status: roomStatus('status').notNull(),
     size: roomSize('size').notNull(),
     createdAt: createdAt(),
@@ -163,6 +164,13 @@ export const bookings = pgTable(
     endTime: ts('end_time').notNull(),
     status: bookingStatus('status').default('PENDING').notNull(),
     remark: text('remark'),
+    // How many people will use the room; checked against seat_capacity when that is known
+    attendeeCount: integer('attendee_count'),
+    purpose: text('purpose'),
+    // Staff booking on behalf of someone: user_id is who made the booking, this is who uses the room
+    bookedForUserId: text('booked_for_user_id'),
+    // Extra needs (wireless mic, hotspot); a request only, not equipment the room is known to have
+    equipmentRequest: text('equipment_request'),
     cancelledBy: text('cancelled_by'),
     cancelReason: text('cancel_reason'),
     createdAt: createdAt(),
@@ -177,6 +185,10 @@ export const bookings = pgTable(
   // it lives in the custom migration 0004_booking-no-overlap.sql.
   (t) => [
     check('Booking_time_valid', sql`${t.endTime} > ${t.startTime}`),
+    check('Booking_attendee_count_check', sql`${t.attendeeCount} IS NULL OR ${t.attendeeCount} > 0`),
+    foreignKey({ columns: [t.bookedForUserId], foreignColumns: [users.id], name: 'Booking_booked_for_user_id_fkey' })
+      .onUpdate('cascade')
+      .onDelete('set null'),
     foreignKey({ columns: [t.reviewedBy], foreignColumns: [users.id], name: 'Booking_reviewed_by_fkey' })
       .onUpdate('cascade')
       .onDelete('set null'),
