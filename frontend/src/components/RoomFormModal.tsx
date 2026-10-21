@@ -41,7 +41,8 @@ export default function RoomFormModal({ room, canEditRules, onClose, onSaved }: 
       description: room?.description ?? '',
       room_type: room?.room_type ?? 'LECTURE',
       size: room?.size ?? 'MEDIUM',
-      seat_capacity: room?.seat_capacity ?? 30,
+      // Unknown capacity stays empty: saving must not invent one
+      seat_capacity: room ? (room.seat_capacity ?? NaN) : 30,
       status: room?.status ?? 'AVAILABLE',
       max_hours: room?.max_hours ?? 2,
       allowed_roles: room?.allowed_roles ?? ['STUDENT', 'LECTURER'],
@@ -63,11 +64,15 @@ export default function RoomFormModal({ room, canEditRules, onClose, onSaved }: 
       description: v.description.trim() || null,
       room_type: v.room_type,
       size: v.size,
-      seat_capacity: v.seat_capacity,
+      // Empty only for a room whose capacity is unknown; the field is required when creating
+      seat_capacity: Number.isNaN(v.seat_capacity) ? null : v.seat_capacity,
       status: v.status,
     }
     try {
-      let saved = room ? await updateRoom(room.id, input) : await createRoom(input)
+      // An unknown capacity is left as it is (not sent) instead of being set to a guess
+      let saved = room
+        ? await updateRoom(room.id, { ...input, seat_capacity: input.seat_capacity ?? undefined })
+        : await createRoom(input)
       const rulesChanged =
         saved.max_hours !== v.max_hours || [...saved.allowed_roles].sort().join() !== [...v.allowed_roles].sort().join()
       if (canEditRules && rulesChanged) {
@@ -140,7 +145,7 @@ export default function RoomFormModal({ room, canEditRules, onClose, onSaved }: 
               type="number"
               {...register('seat_capacity', {
                 valueAsNumber: true,
-                required: 'กรุณาใส่ความจุ',
+                required: room ? false : 'กรุณาใส่ความจุ',
                 min: { value: 1, message: 'อย่างน้อย 1' },
                 max: { value: 500, message: 'ไม่เกิน 500' },
               })}

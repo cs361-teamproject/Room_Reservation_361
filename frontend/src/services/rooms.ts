@@ -11,7 +11,7 @@ interface ApiRoom {
   room_type: 'LAB' | 'LECTURE' | 'MEETING' | 'COWORKING'
   size: 'SMALL' | 'MEDIUM' | 'LARGE'
   status: 'AVAILABLE' | 'MAINTENANCE' | 'RESERVED'
-  seat_capacity: number
+  seat_capacity: number | null
   computers: number
   projector: number
   mic: number
@@ -46,7 +46,7 @@ function toRoom(r: ApiRoom): Room {
     type: ROOM_TYPE_LABELS[r.room_type] ?? r.room_type,
     size: SIZES[r.size],
     status: r.status,
-    seats: r.seat_capacity,
+    seats: r.seat_capacity ?? undefined,
     computers: r.computers,
     projector: r.projector,
     mic: r.mic,
