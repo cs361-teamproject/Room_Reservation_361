@@ -7,6 +7,10 @@ import { getDb } from '../../src/shared/db/client';
 import { runClassReset } from '../../src/shared/db/class-setup';
 
 const API_URL = (process.env.API_URL ?? 'http://localhost:3000/api').replace(/\/$/, '');
+// The handout's accounts, played by the existing demo users
+const STU_A = '6709616541';
+const STAFF_1 = 'staff';
+const FAC_A = 'lecturer';
 
 let failed = 0;
 const check = (name: string, ok: boolean, detail?: unknown) => {
@@ -25,15 +29,15 @@ async function call(method: string, path: string, user: string, body?: unknown) 
   return { status: res.status, body: (await res.json()) as Body };
 }
 
-const rooms = (await call('GET', '/rooms', 'stu-a')).body.data as Array<{ id: string; room_name: string }>;
+const rooms = (await call('GET', '/rooms', STU_A)).body.data as Array<{ id: string; room_name: string }>;
 const room = Object.fromEntries(rooms.map((r) => [r.room_name, r.id]));
 const cs100 = async () =>
-  ((await call('GET', `/bookings?from=2026-11-01&to=2026-11-30&room_id=${room['บร.2-107']}`, 'stu-a')).body.data as unknown[])
+  ((await call('GET', `/bookings?from=2026-11-01&to=2026-11-30&room_id=${room['บร.2-107']}`, STU_A)).body.data as unknown[])
     .length;
 const cs100Before = await cs100();
 
-const users = (await call('GET', '/users?role=LECTURER', 'staff-1')).body.data as Array<{ id: string; username: string }>;
-const facA = users.find((u) => u.username === 'fac-a')!;
+const users = (await call('GET', '/users?role=LECTURER', STAFF_1)).body.data as Array<{ id: string; username: string }>;
+const facA = users.find((u) => u.username === FAC_A)!;
 
 try {
   console.log('Self-test 1: STU-A books บร.2-213 (Lab, 65) on 03/11/2026 09:30–11:00 for 60 people\n');
@@ -45,14 +49,14 @@ try {
     purpose: 'เรียน/กิจกรรมรายวิชา CS102',
     attendee_count: 60,
   };
-  let r = await call('POST', '/bookings', 'stu-a', { ...st1, attendee_count: 66 });
+  let r = await call('POST', '/bookings', STU_A, { ...st1, attendee_count: 66 });
   check('66 people in a 65-seat room -> 400', r.status === 400 && String(r.body.message).includes('65'), r);
 
-  r = await call('POST', '/bookings', 'stu-a', st1);
+  r = await call('POST', '/bookings', STU_A, st1);
   check('request -> 201 PENDING, 60 people', r.status === 201 && r.body.data.status === 'PENDING' && r.body.data.attendee_count === 60, r);
   const id1 = r.body.data?.id;
 
-  r = await call('GET', `/bookings/${id1}`, 'stu-a');
+  r = await call('GET', `/bookings/${id1}`, STU_A);
   const d1 = r.body.data;
   check(
     'read back after refresh: room, date/time, 60 people, requester, status',
@@ -78,19 +82,19 @@ try {
     equipment_request: 'ไมโครโฟนลอย, Hotspot / Internet สำรอง',
     booked_for_user_id: facA.id,
   };
-  r = await call('POST', '/bookings', 'stu-a', st2);
+  r = await call('POST', '/bookings', STU_A, st2);
   check('a student cannot book on behalf -> 403', r.status === 403, r);
   const { booked_for_user_id: _, ...withoutFor } = st2;
-  r = await call('POST', '/bookings', 'staff-1', withoutFor);
+  r = await call('POST', '/bookings', STAFF_1, withoutFor);
   check('staff without a room user -> 400', r.status === 400, r);
-  r = await call('POST', '/bookings', 'staff-1', { ...st2, attendee_count: 51 });
+  r = await call('POST', '/bookings', STAFF_1, { ...st2, attendee_count: 51 });
   check('51 people in a 50-seat room -> 400', r.status === 400, r);
 
-  r = await call('POST', '/bookings', 'staff-1', st2);
+  r = await call('POST', '/bookings', STAFF_1, st2);
   check('staff books for FAC-A -> 201', r.status === 201, r);
   const id2 = r.body.data?.id;
 
-  r = await call('GET', `/bookings/${id2}`, 'staff-1');
+  r = await call('GET', `/bookings/${id2}`, STAFF_1);
   const d2 = r.body.data;
   check(
     'requester STAFF-1 and room user FAC-A are kept apart',
@@ -101,18 +105,18 @@ try {
   check('equipment stored as a request', d2.equipment_request === st2.equipment_request, d2);
   check('status follows the workflow (staff booking = APPROVED)', d2.status === 'APPROVED', d2.status);
 
-  r = await call('GET', '/bookings/mine?scope=all&limit=50', 'fac-a');
+  r = await call('GET', '/bookings/mine?scope=all&limit=50', FAC_A);
   check('FAC-A sees it in "my bookings"', (r.body.data.items as Array<{ id: string }>).some((b) => b.id === id2), r);
 
   console.log('\nOther rules\n');
-  r = await call('POST', '/bookings', 'fac-a', {
+  r = await call('POST', '/bookings', FAC_A, {
     room_id: room['บร.2-306'],
     start_time: '2026-11-05T09:00:00+07:00',
     end_time: '2026-11-05T10:00:00+07:00',
     attendee_count: 200,
   });
   check('room with no known capacity is not compared to a guess -> 201', r.status === 201, r);
-  r = await call('POST', '/bookings', 'stu-a', { ...st1, start_time: '2026-11-03T10:00:00+07:00', end_time: '2026-11-03T10:30:00+07:00' });
+  r = await call('POST', '/bookings', STU_A, { ...st1, start_time: '2026-11-03T10:00:00+07:00', end_time: '2026-11-03T10:30:00+07:00' });
   check('overlap with Self-test 1 -> 409', r.status === 409, r);
 } finally {
   await runClassReset(getDb());

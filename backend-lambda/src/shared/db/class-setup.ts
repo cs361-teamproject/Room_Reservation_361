@@ -1,7 +1,7 @@
 // In-class setup for CS361 V3 Project 3 (docs/CS361_V3_Project3_In_Class_Setup_and_Self_Test.docx.pdf).
 // Rooms and capacities from the department, three test accounts, and the CS100 baseline.
 // Idempotent; class-reset puts the class rooms back to just the baseline. Other data is untouched.
-import { and, inArray, ne, or, isNull } from 'drizzle-orm';
+import { and, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import type { Db } from './client';
 import { bookings, rooms, users } from './schema';
 
@@ -17,11 +17,12 @@ const CLASS_ROOMS = [
   { roomName: 'ห้องประชุม 2', roomType: 'MEETING', size: 'SMALL', seatCapacity: null, description: 'ห้องประชุม (ไม่ระบุความจุ)' },
 ] as const;
 
-// Usernames must exist in the Cognito user pool too
+// The existing Cognito demo accounts play the three roles of the handout:
+// STU-A = 6709616541, STAFF-1 = staff, FAC-A = lecturer (display names follow the handout)
 const CLASS_USERS = [
-  { username: 'stu-a', role: 'STUDENT', displayName: 'น.ส.ณิชา ศรีสุข' },
-  { username: 'staff-1', role: 'STAFF', displayName: 'คุณวาริชา วงศ์ดี' },
-  { username: 'fac-a', role: 'LECTURER', displayName: 'อ.ดร.กิตติพงษ์ นิรันดร์' },
+  { username: '6709616541', role: 'STUDENT', displayName: 'น.ส.ณิชา ศรีสุข' },
+  { username: 'staff', role: 'STAFF', displayName: 'คุณวาริชา วงศ์ดี' },
+  { username: 'lecturer', role: 'LECTURER', displayName: 'อ.ดร.กิตติพงษ์ นิรันดร์' },
 ] as const;
 
 const BASELINE_TITLE = 'CS100';
@@ -55,10 +56,14 @@ export async function runClassSetup(db: Db) {
       })),
     )
     .onConflictDoNothing({ target: rooms.roomName });
-  await db.insert(users).values([...CLASS_USERS]).onConflictDoNothing({ target: users.username });
+  // Existing accounts keep their id and role; only the name shown follows the handout
+  await db
+    .insert(users)
+    .values([...CLASS_USERS])
+    .onConflictDoUpdate({ target: users.username, set: { displayName: sql`excluded.display_name` } });
 
   const roomId = await classRoomIds(db);
-  const [faculty] = await db.select({ id: users.id }).from(users).where(inArray(users.username, ['fac-a']));
+  const [faculty] = await db.select({ id: users.id }).from(users).where(inArray(users.username, ['lecturer']));
 
   // Baseline only once: no CS100 row in บร.2-107 yet
   const existing = await db
