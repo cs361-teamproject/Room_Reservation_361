@@ -11,6 +11,7 @@ import {
   findBookingsInRange,
   findManagedBookings,
   findMyBookings,
+  findActiveUser,
   findRoomForBooking,
   insertBooking,
   type ManagedBookingRow,
@@ -72,6 +73,8 @@ const toManagedItem = (row: ManagedBookingRow) => ({
   created_at: row.createdAt,
   room_name: row.roomName,
   user: { display_name: row.displayName, role: row.role },
+  attendee_count: row.attendeeCount,
+  booked_for: row.bookedForName ? { display_name: row.bookedForName, role: row.bookedForRole } : null,
 });
 
 const toDecisionItem = (booking: { id: string; status: string; reviewedBy: string | null; reviewedAt: Date | null; rejectReason: string | null }) => ({
@@ -132,25 +135,53 @@ export const bookingsService = {
       const room = await findRoomForBooking(tx, body.room_id);
       if (!room) throw notFound('Room not found');
 
-      if (!room.allowedRoles.includes(user.role)) {
+      // Who will use the room: the caller, or (STAFF only) the person they book for
+      const onBehalf = body.booked_for_user_id !== undefined;
+      if (onBehalf && user.role !== 'STAFF') throw forbidden('จองแทนผู้อื่นได้เฉพาะเจ้าหน้าที่');
+      if (!onBehalf && user.role === 'STAFF') throw badRequest('booked_for_user_id: เจ้าหน้าที่ต้องระบุผู้ใช้ห้อง');
+      const roomUser = onBehalf ? await findActiveUser(tx, body.booked_for_user_id!) : user;
+      if (!roomUser) throw badRequest('booked_for_user_id: ไม่พบผู้ใช้ห้องนี้ในระบบ');
+      if (roomUser.role !== 'STUDENT' && roomUser.role !== 'LECTURER') {
+        throw badRequest('booked_for_user_id: ผู้ใช้ห้องต้องเป็นนักศึกษาหรืออาจารย์');
+      }
+
+      // Room rules apply to the person using the room
+      if (!room.allowedRoles.includes(roomUser.role)) {
         throw forbidden(`ห้องนี้จองได้เฉพาะ${room.allowedRoles.map((r) => ROLE_LABELS[r]).join(' และ ')}`);
       }
 
       const problems = ruleViolations(room, start, end, new Date());
+      // Unknown capacity (classrooms, meeting rooms): accept, never compare against a guess
+      if (room.seatCapacity !== null && body.attendee_count > room.seatCapacity) {
+        problems.push(`attendee_count: ผู้เข้าร่วม ${body.attendee_count} คน เกินความจุห้อง ${room.seatCapacity} ที่นั่ง`);
+      }
       if (problems.length > 0) throw badRequest(problems);
 
+      // Staff decide bookings anyway, so one they make is approved straight away
+      const now = new Date();
       const booking = await insertBooking(tx, {
         userId: user.id,
+        bookedForUserId: onBehalf ? roomUser.id : null,
         roomId: room.id,
-        bookingType: BOOKING_TYPE_BY_ROLE[user.role as keyof typeof BOOKING_TYPE_BY_ROLE],
+        bookingType: BOOKING_TYPE_BY_ROLE[roomUser.role],
         title: body.title ?? null,
+        purpose: body.purpose || null,
+        attendeeCount: body.attendee_count,
+        equipmentRequest: body.equipment_request || null,
         startTime: start,
         endTime: end,
-        status: 'PENDING',
+        status: onBehalf ? 'APPROVED' : 'PENDING',
+        ...(onBehalf && { reviewedBy: user.id, reviewedAt: now }),
       });
-      await recordEvent(tx, { bookingId: booking.id, actorId: user.id, action: 'CREATED' });
+      await recordEvent(tx, {
+        bookingId: booking.id,
+        actorId: user.id,
+        action: 'CREATED',
+        note: onBehalf ? `จองแทน ${roomUser.displayName ?? roomUser.username}` : null,
+      });
+      if (onBehalf) await recordEvent(tx, { bookingId: booking.id, actorId: user.id, action: 'APPROVED' });
 
-      // The caller owns this booking, so the title is shown even for STUDENT_BOOKING
+      // The caller made this booking, so the title is shown even for STUDENT_BOOKING
       return {
         id: booking.id,
         title: booking.title,
@@ -158,7 +189,12 @@ export const bookingsService = {
         status: booking.status,
         start_time: booking.startTime,
         end_time: booking.endTime,
-        room: { id: room.id, room_name: room.roomName },
+        attendee_count: booking.attendeeCount,
+        purpose: booking.purpose,
+        equipment_request: booking.equipmentRequest,
+        room: { id: room.id, room_name: room.roomName, seat_capacity: room.seatCapacity },
+        requester: { id: user.id, display_name: user.displayName, role: user.role },
+        booked_for: onBehalf ? { id: roomUser.id, display_name: roomUser.displayName, role: roomUser.role } : null,
       };
     });
   },
@@ -246,7 +282,8 @@ export const bookingsService = {
     }
 
     // Check authorization: must be owner or Staff/Admin
-    const isOwner = booking.userId === user.id;
+    // The requester, or the person a staff member booked for
+    const isOwner = booking.userId === user.id || booking.bookedForUserId === user.id;
     const isStaffOrAdmin = user.role === 'STAFF' || user.role === 'ADMIN';
 
     if (!isOwner && !isStaffOrAdmin) {
@@ -265,10 +302,16 @@ export const bookingsService = {
       cancel_reason: booking.cancelReason,
       remark: booking.remark,
       created_at: booking.createdAt,
+      attendee_count: booking.attendeeCount,
+      purpose: booking.purpose,
+      equipment_request: booking.equipmentRequest,
       room: {
         id: booking.roomId,
         room_name: booking.roomName,
+        seat_capacity: booking.seatCapacity,
       },
+      requester: { display_name: booking.userDisplayName, role: booking.userRole },
+      booked_for: booking.bookedForName ? { display_name: booking.bookedForName, role: booking.bookedForRole } : null,
       // Staff look at other people's bookings, so they also see who made it
       ...(isStaffOrAdmin && { user: { display_name: booking.userDisplayName, role: booking.userRole } }),
     };
@@ -286,7 +329,8 @@ export const bookingsService = {
     }
 
     // Check authorization: must be owner or Staff/Admin
-    const isOwner = booking.userId === user.id;
+    // The requester, or the person a staff member booked for
+    const isOwner = booking.userId === user.id || booking.bookedForUserId === user.id;
     const isStaffOrAdmin = user.role === 'STAFF' || user.role === 'ADMIN';
 
     if (!isOwner && !isStaffOrAdmin) {

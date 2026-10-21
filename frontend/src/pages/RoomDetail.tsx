@@ -12,6 +12,7 @@ import { disabledBtn, primaryBtn } from '../components/buttons'
 import { useAuth } from '../auth/context'
 import { useAsync } from '../hooks/useAsync'
 import { getRoom, rulesOf } from '../services/rooms'
+import { getUsers } from '../services/users'
 import monitorIcon from '../assets/icon-mornitor.png'
 
 const STATUS_TAG: Record<string, { label: string; color: string }> = {
@@ -30,6 +31,9 @@ export default function RoomDetail() {
   // Bumped after a booking so the schedule fetches again and shows it
   const [scheduleVersion, setScheduleVersion] = useState(0)
   const { status: authStatus, user } = useAuth()
+  // Staff book on someone's behalf: the people a room can be booked for
+  const isStaff = user?.role === 'STAFF'
+  const bookFor = useAsync(`book-for|${isStaff}`, () => (isStaff ? getUsers(['LECTURER', 'STUDENT']) : Promise.resolve(null)))
   const { toast, show } = useToast()
 
   if (loading) {
@@ -58,9 +62,11 @@ export default function RoomDetail() {
       ? 'ห้องนี้ปิดปรับปรุง ยังจองไม่ได้'
       : authStatus === 'loading'
         ? 'กำลังตรวจสอบการเข้าสู่ระบบ…'
-        : user && !rules.allowed_roles.includes(user.role)
-          ? `ห้องนี้จองได้เฉพาะ${rolesLabel(rules.allowed_roles)}`
-          : null
+        : user?.role === 'ADMIN'
+          ? 'ผู้ดูแลระบบจัดการห้องได้ แต่ไม่ได้จองห้อง'
+          : user && !isStaff && !rules.allowed_roles.includes(user.role)
+            ? `ห้องนี้จองได้เฉพาะ${rolesLabel(rules.allowed_roles)}`
+            : null
   const startBooking = () =>
     user ? setBooking(true) : navigate(`/login?next=${encodeURIComponent(location.pathname + location.search)}`)
 
@@ -97,7 +103,7 @@ export default function RoomDetail() {
               <span className="room-detail-capacity" style={styles.capacityTag}>
                 <img src={monitorIcon} alt="capacity" style={styles.capacityIcon} />
                 <span style={styles.capacityText}>Seat: </span>
-                <span style={styles.capacityValue}>{room.seats ?? 0}</span>
+                <span style={styles.capacityValue}>{room.seats ?? 'ไม่ระบุ'}</span>
               </span>
               <span className="room-detail-status" style={{ ...styles.statusTag, background: status.color }}>
                 {status.label}
@@ -109,7 +115,7 @@ export default function RoomDetail() {
                 title={blockedReason ?? undefined}
                 onClick={startBooking}
               >
-                {user || authStatus === 'loading' ? 'จองห้องนี้' : 'เข้าสู่ระบบเพื่อจอง'}
+                {isStaff ? 'จองแทน' : user || authStatus === 'loading' ? 'จองห้องนี้' : 'เข้าสู่ระบบเพื่อจอง'}
               </button>
             </div>
           </div>
@@ -130,17 +136,18 @@ export default function RoomDetail() {
 
       {booking && (
         <BookingFormModal
-          room={{ id: room.id, name: room.name }}
+          room={{ id: room.id, name: room.name, seatCapacity: room.seats ?? null }}
           rules={rules}
+          bookForOptions={isStaff ? (bookFor.data ?? []) : undefined}
           onClose={() => setBooking(false)}
           onDone={() => {
             setBooking(false)
             setScheduleVersion((v) => v + 1)
             show(
               <>
-                ส่งคำขอแล้ว รอเจ้าหน้าที่อนุมัติ
-                <Link to="/my-bookings" style={styles.toastLink}>
-                  ดูการจองของฉัน
+                {isStaff ? 'จองแทนเรียบร้อย อนุมัติแล้ว' : 'ส่งคำขอแล้ว รอเจ้าหน้าที่อนุมัติ'}
+                <Link to={isStaff ? '/admin/bookings' : '/my-bookings'} style={styles.toastLink}>
+                  {isStaff ? 'ดูรายการจอง' : 'ดูการจองของฉัน'}
                 </Link>
               </>,
             )

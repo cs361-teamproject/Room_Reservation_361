@@ -92,6 +92,12 @@ export const createBookingBody = z.object({
   start_time: isoDateTime,
   end_time: isoDateTime,
   title: z.string().trim().min(1, 'Must not be empty').max(200, 'Must be at most 200 characters').optional(),
+  attendee_count: z.number({ error: 'Required' }).int('Must be a whole number').min(1, 'Must be at least 1').max(1000),
+  purpose: z.string().trim().max(500, 'Must be at most 500 characters').optional(),
+  // Extra needs such as a wireless mic or a hotspot: stored as a request, never as available equipment
+  equipment_request: z.string().trim().max(500, 'Must be at most 500 characters').optional(),
+  // STAFF only: the person who will use the room (the caller stays the requester)
+  booked_for_user_id: z.string().min(1).optional(),
 });
 
 export type CreateBookingBody = z.infer<typeof createBookingBody>;

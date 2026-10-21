@@ -179,7 +179,9 @@ function RequestCard({ booking: b, canDecide, busy, onOpen, onApprove, onReject 
           {fullDateLabel(b.start_time)} · {timeRangeLabel(b.start_time, b.end_time)}
         </span>
         <span style={styles.meta}>
-          {b.user.display_name} ({ROLE_LABELS[b.user.role]}) · ส่งคำขอ {dateTimeLabel(b.created_at)}
+          {b.user.display_name} ({ROLE_LABELS[b.user.role]})
+          {b.booked_for && ` · จองแทน ${b.booked_for.display_name ?? '-'}`}
+          {b.attendee_count != null && ` · ${b.attendee_count} คน`} · ส่งคำขอ {dateTimeLabel(b.created_at)}
         </span>
       </div>
       {actionable && (

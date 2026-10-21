@@ -38,7 +38,7 @@ const room = Object.fromEntries(rooms.map((r) => [r.room_name, r.id]));
 const meeting = room['LC-106']; // STUDENT + LECTURER, 2 hours
 const lab = room['LC-101']; // LECTURER only, 3 hours
 const closed = room['LC-105']; // MAINTENANCE
-const slot = { room_id: meeting, start_time: at('10:00'), end_time: at('12:00'), title: '[test] ประชุมกลุ่ม' };
+const slot = { room_id: meeting, start_time: at('10:00'), end_time: at('12:00'), title: '[test] ประชุมกลุ่ม', attendee_count: 5 };
 
 console.log(`API ${API_URL}, test day ${day}\n`);
 try {
@@ -49,7 +49,7 @@ try {
   check('unknown user -> 403', r.status === 403, r);
 
   r = await post(STAFF, slot);
-  check('STAFF cannot book -> 403', r.status === 403, r);
+  check('STAFF must name who uses the room -> 400', r.status === 400 && String(r.body.message).includes('booked_for_user_id'), r);
 
   r = await post(STUDENT, { room_id: meeting, start_time: '2031-01-01 10:00' });
   check('bad body -> 400 per field', r.status === 400 && String(r.body.message).includes('end_time'), r);

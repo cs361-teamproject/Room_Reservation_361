@@ -1,6 +1,10 @@
-import { and, asc, desc, eq, gt, inArray, isNull, lt } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNull, lt, or } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { type Db, getDb, type Tx } from '../../shared/db/client';
 import { bookingEvents, bookings, rooms, users } from '../../shared/db/schema';
+
+/** The person using the room when a staff member booked on their behalf */
+const roomUsers = alias(users, 'room_user');
 
 export interface BookingFilters {
   /** Start of range (inclusive boundary): bookings with end_time > fromEdge */
@@ -56,6 +60,7 @@ export async function findRoomForBooking(tx: Db | Tx, roomId: string) {
       status: rooms.status,
       maxHours: rooms.maxHours,
       allowedRoles: rooms.allowedRoles,
+      seatCapacity: rooms.seatCapacity,
     })
     .from(rooms)
     .where(and(eq(rooms.id, roomId), isNull(rooms.deletedAt)))
@@ -92,10 +97,14 @@ export async function findManagedBookings(filters: {
       displayName: users.displayName,
       role: users.role,
       roomName: rooms.roomName,
+      attendeeCount: bookings.attendeeCount,
+      bookedForName: roomUsers.displayName,
+      bookedForRole: roomUsers.role,
     })
     .from(bookings)
     .innerJoin(users, eq(bookings.userId, users.id))
     .innerJoin(rooms, eq(bookings.roomId, rooms.id))
+    .leftJoin(roomUsers, eq(bookings.bookedForUserId, roomUsers.id))
     .where(inArray(bookings.status, filters.statuses))
     .orderBy(desc(bookings.createdAt))
     .limit(filters.limit);
@@ -148,7 +157,8 @@ export async function findMyBookings(params: {
   const { userId, scope, statuses, page, limit } = params;
   const now = new Date();
 
-  const conditions = [eq(bookings.userId, userId)];
+  // Mine = I made it, or a staff member booked it for me
+  const conditions = [or(eq(bookings.userId, userId), eq(bookings.bookedForUserId, userId))!];
 
   // Apply scope filter
   if (scope === 'upcoming') {
@@ -209,14 +219,22 @@ export async function findBookingById(bookingId: string, db: Db | Tx = getDb()) 
       cancelReason: bookings.cancelReason,
       remark: bookings.remark,
       createdAt: bookings.createdAt,
+      attendeeCount: bookings.attendeeCount,
+      purpose: bookings.purpose,
+      equipmentRequest: bookings.equipmentRequest,
+      bookedForUserId: bookings.bookedForUserId,
       roomId: rooms.id,
       roomName: rooms.roomName,
+      seatCapacity: rooms.seatCapacity,
       userDisplayName: users.displayName,
       userRole: users.role,
+      bookedForName: roomUsers.displayName,
+      bookedForRole: roomUsers.role,
     })
     .from(bookings)
     .innerJoin(rooms, eq(bookings.roomId, rooms.id))
     .innerJoin(users, eq(bookings.userId, users.id))
+    .leftJoin(roomUsers, eq(bookings.bookedForUserId, roomUsers.id))
     .where(eq(bookings.id, bookingId))
     .limit(1);
 
@@ -304,4 +322,14 @@ export async function cancelBooking(
     .returning({ id: bookings.id, startTime: bookings.startTime });
 
   return result;
+}
+
+/** An active user, for booking on someone's behalf */
+export async function findActiveUser(tx: Db | Tx, userId: string) {
+  const [user] = await tx
+    .select({ id: users.id, role: users.role, displayName: users.displayName, username: users.username })
+    .from(users)
+    .where(and(eq(users.id, userId), isNull(users.deletedAt)))
+    .limit(1);
+  return user;
 }

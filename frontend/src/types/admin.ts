@@ -17,7 +17,8 @@ export interface AdminRoom {
   description: string | null
   room_type: RoomType
   size: RoomSize
-  seat_capacity: number
+  /** null: the department did not give one */
+  seat_capacity: number | null
   status: RoomStatus
   max_hours: number
   allowed_roles: UserRole[]
