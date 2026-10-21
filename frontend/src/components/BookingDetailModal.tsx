@@ -31,6 +31,9 @@ interface Props {
   onCancel?: (booking: BookingDetail) => void
 }
 
+const personLabel = (p: { display_name: string | null; role: keyof typeof ROLE_LABELS }) =>
+  `${p.display_name ?? '-'} (${ROLE_LABELS[p.role]})`
+
 export default function BookingDetailModal({ id, onClose, onEdit, onCancel }: Props) {
   const detail = useAsync(`detail-${id}`, () => getBooking(id))
   const events = useAsync(`events-${id}`, () => getBookingEvents(id))
@@ -74,11 +77,38 @@ export default function BookingDetailModal({ id, onClose, onEdit, onCancel }: Pr
           </div>
 
           <dl style={styles.grid}>
-            {b.user && (
+            {(b.requester ?? b.user) && (
               <>
                 <dt style={styles.dt}>ผู้จอง</dt>
+                <dd style={styles.dd}>{personLabel(b.requester ?? b.user!)}</dd>
+              </>
+            )}
+            {b.booked_for && (
+              <>
+                <dt style={styles.dt}>ผู้ใช้ห้อง</dt>
+                <dd style={styles.dd}>{personLabel(b.booked_for)} · จองแทนโดยเจ้าหน้าที่</dd>
+              </>
+            )}
+            {b.attendee_count != null && (
+              <>
+                <dt style={styles.dt}>ผู้เข้าร่วม</dt>
                 <dd style={styles.dd}>
-                  {b.user.display_name} ({ROLE_LABELS[b.user.role]})
+                  {b.attendee_count} คน
+                  {b.room.seat_capacity != null ? ` / ความจุ ${b.room.seat_capacity} ที่นั่ง` : ' (ห้องไม่ระบุความจุ)'}
+                </dd>
+              </>
+            )}
+            {b.purpose && (
+              <>
+                <dt style={styles.dt}>วัตถุประสงค์</dt>
+                <dd style={styles.dd}>{b.purpose}</dd>
+              </>
+            )}
+            {b.equipment_request && (
+              <>
+                <dt style={styles.dt}>อุปกรณ์ที่ขอ</dt>
+                <dd style={styles.dd}>
+                  {b.equipment_request} <span style={styles.requestTag}>ขอเพิ่ม · ยังไม่ยืนยัน</span>
                 </dd>
               </>
             )}
@@ -148,6 +178,17 @@ const styles: Record<string, CSSProperties> = {
   grid: { display: 'grid', gridTemplateColumns: '110px 1fr', rowGap: 8, margin: 0, fontSize: 15 },
   dt: { color: '#6b6b6b' },
   dd: { margin: 0, fontWeight: 600 },
+  requestTag: {
+    marginLeft: 6,
+    padding: '2px 8px',
+    borderRadius: 999,
+    border: '1.5px dashed #F59E0B',
+    background: '#FFF7ED',
+    color: '#92400E',
+    fontSize: 12,
+    fontWeight: 600,
+    whiteSpace: 'nowrap',
+  },
   reason: { margin: 0, padding: '10px 14px', borderRadius: 8, fontSize: 14, lineHeight: 1.5 },
   subhead: { margin: '0 0 10px', fontSize: 15, fontWeight: 700 },
   timeline: { listStyle: 'none', margin: 0, padding: 0 },

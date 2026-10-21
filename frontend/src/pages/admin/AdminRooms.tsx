@@ -81,7 +81,7 @@ export default function AdminRooms() {
                 {ROOM_TYPE_LABELS[room.room_type]}
               </span>
               <span className="admin-room-cell" data-label="ความจุ">
-                {room.seat_capacity} ที่นั่ง
+                {room.seat_capacity != null ? `${room.seat_capacity} ที่นั่ง` : 'ไม่ระบุ'}
               </span>
               <span className="admin-room-cell" data-label="สถานะ">
                 <select

@@ -35,6 +35,18 @@ export interface CreateBookingInput {
   start_time: string
   end_time: string
   title?: string
+  attendee_count: number
+  purpose?: string
+  /** Extra needs (wireless mic, hotspot): a request, not equipment the room has */
+  equipment_request?: string
+  /** STAFF only: the person who will use the room */
+  booked_for_user_id?: string
+}
+
+/** A person on a booking (requester or room user) */
+export interface BookingPerson {
+  display_name: string | null
+  role: UserRole
 }
 
 /** Body of PATCH /api/bookings/:id */
@@ -69,7 +81,14 @@ export interface BookingDetail {
   status: BookingStatus
   start_time: string
   end_time: string
-  room: { id: string; room_name: string }
+  room: { id: string; room_name: string; seat_capacity?: number | null }
+  attendee_count?: number | null
+  purpose?: string | null
+  equipment_request?: string | null
+  /** Who made the booking */
+  requester?: BookingPerson
+  /** Set when a staff member booked on someone's behalf */
+  booked_for?: BookingPerson | null
   reject_reason: string | null
   cancel_reason: string | null
   created_at: string
@@ -97,6 +116,8 @@ export interface ManageBooking {
   created_at: string
   room_name: string
   user: { display_name: string; role: UserRole }
+  attendee_count?: number | null
+  booked_for?: BookingPerson | null
 }
 
 /** GET /api/stats/weekly */
