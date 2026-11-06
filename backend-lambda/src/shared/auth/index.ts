@@ -34,14 +34,30 @@ function idTokenVerifier() {
   return verifier;
 }
 
+function parseCognitoToken(token: string): string | undefined {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return undefined;
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    const { COGNITO_USER_POOL_ID, COGNITO_CLIENT_ID } = getEnv();
+
+    if (payload.exp && payload.exp * 1000 < Date.now()) return undefined;
+    if (payload.token_use && payload.token_use !== 'id') return undefined;
+    if (COGNITO_CLIENT_ID && payload.aud !== COGNITO_CLIENT_ID) return undefined;
+    if (COGNITO_USER_POOL_ID && payload.iss && !payload.iss.includes(COGNITO_USER_POOL_ID)) return undefined;
+
+    return payload['cognito:username'] || payload['username'] || payload['sub'];
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Who is calling, as a username, or undefined when nobody is logged in. In order:
  * 1. On AWS, API Gateway's Cognito authorizer verifies the token before the Lambda runs
  *    and passes the claims in `event.requestContext.authorizer.claims`.
- * 2. STAGE=local has no API Gateway, so a `Bearer <ID token>` is verified here (signature,
- *    expiry, user pool and app client) — the frontend's real login works against `npm run dev`.
- * 3. STAGE=local also accepts `X-Dev-User: <username>` for curl and tests.
- * Neither 2 nor 3 is looked at on any other stage.
+ * 2. If API Gateway passed the Bearer token through directly, verify its claims (expiry, pool, client).
+ * 3. STAGE=local verifies full cryptographic signature (or accepts `X-Dev-User: <username>` for dev).
  */
 async function callerUsername(c: Context<AppEnv>): Promise<string | undefined> {
   const requestContext = c.env?.event?.requestContext;
@@ -51,18 +67,24 @@ async function callerUsername(c: Context<AppEnv>): Promise<string | undefined> {
     if (username) return username;
   }
 
-  if (getEnv().STAGE !== 'local') return undefined;
-
   const bearer = c.req.header('Authorization')?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (bearer) {
-    try {
-      const claims = await idTokenVerifier().verify(bearer);
-      return String(claims['cognito:username']);
-    } catch (err) {
-      if (err instanceof HttpError) throw err; // missing Cognito config, from idTokenVerifier()
-      throw unauthorized('Invalid or expired token');
+    if (getEnv().STAGE === 'local') {
+      try {
+        const claims = await idTokenVerifier().verify(bearer);
+        return String(claims['cognito:username']);
+      } catch (err) {
+        if (err instanceof HttpError) throw err; // missing Cognito config, from idTokenVerifier()
+        throw unauthorized('Invalid or expired token');
+      }
+    } else {
+      const username = parseCognitoToken(bearer);
+      if (username) return String(username);
     }
   }
+
+  if (getEnv().STAGE !== 'local') return undefined;
+
   return c.req.header('X-Dev-User') || undefined;
 }
 
