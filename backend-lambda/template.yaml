@@ -22,18 +22,18 @@ Parameters:
     Default: dev
   S3BucketName:
     Type: String
-    Default: roomreserve-images-use1
+    Default: roomres-dev-photos-sg
     Description: >-
       Bucket that room photos are uploaded to. Must be in the same region as the stack, because
       the Lambdas reach S3 through the VPC's S3 gateway endpoint; needs a CORS rule allowing POST
       from the frontend.
   S3PublicUrl:
     Type: String
-    Default: https://roomreserve-images-use1.s3.us-east-1.amazonaws.com
+    Default: https://roomres-dev-photos-sg.s3.ap-southeast-1.amazonaws.com
     Description: Base URL that room photo object keys are appended to.
   CognitoUserPoolArn:
     Type: String
-    Default: arn:aws:cognito-idp:us-east-1:568318158381:userpool/us-east-1_IRgcDe04c
+    Default: arn:aws:cognito-idp:ap-southeast-1:568318158381:userpool/ap-southeast-1_cKRx21D0U
     Description: Cognito user pool whose ID tokens the API accepts.
 
 Globals:

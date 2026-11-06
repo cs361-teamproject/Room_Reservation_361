@@ -7,7 +7,7 @@ import * as esbuild from 'esbuild';
 
 const args = process.argv.slice(2);
 const watch = args.includes('--watch');
-const only = args.filter((a) => !a.startsWith('--'));
+const only = args.filter((a) => !a.startsWith('--')).map((a) => a.trim());
 
 const manifest = JSON.parse(await readFile('functions.json', 'utf8'));
 const known = manifest.functions.map((f) => f.name);

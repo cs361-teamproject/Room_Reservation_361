@@ -12,7 +12,7 @@ source "$DIR/s3.sh"
 source "$DIR/lambda.sh"
 source "$DIR/apigw.sh"
 
-FUNCTIONS="$(select_functions "$@")"
+FUNCTIONS="$(select_functions "$@" | tr -d '\r')"
 
 log "target=$TARGET account=$ACCOUNT_ID region=$REGION functions: $(echo "$FUNCTIONS" | tr '\n' ' ')"
 

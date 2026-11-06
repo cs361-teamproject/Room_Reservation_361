@@ -38,10 +38,10 @@ function idTokenVerifier() {
  * Who is calling, as a username, or undefined when nobody is logged in. In order:
  * 1. On AWS, API Gateway's Cognito authorizer verifies the token before the Lambda runs
  *    and passes the claims in `event.requestContext.authorizer.claims`.
- * 2. STAGE=local has no API Gateway, so a `Bearer <ID token>` is verified here (signature,
- *    expiry, user pool and app client) — the frontend's real login works against `npm run dev`.
+ * 2. STAGE=local (or direct calls) has no API Gateway authorizer, so a `Bearer <ID token>` is
+ *    verified here using CognitoJwtVerifier (verifies AWS cryptographic signature, expiry, pool, client).
  * 3. STAGE=local also accepts `X-Dev-User: <username>` for curl and tests.
- * Neither 2 nor 3 is looked at on any other stage.
+ * 3 is not looked at on any other stage.
  */
 async function callerUsername(c: Context<AppEnv>): Promise<string | undefined> {
   const requestContext = c.env?.event?.requestContext;
@@ -50,8 +50,6 @@ async function callerUsername(c: Context<AppEnv>): Promise<string | undefined> {
     const username = claims?.['cognito:username'];
     if (username) return username;
   }
-
-  if (getEnv().STAGE !== 'local') return undefined;
 
   const bearer = c.req.header('Authorization')?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (bearer) {
@@ -63,6 +61,9 @@ async function callerUsername(c: Context<AppEnv>): Promise<string | undefined> {
       throw unauthorized('Invalid or expired token');
     }
   }
+
+  if (getEnv().STAGE !== 'local') return undefined;
+
   return c.req.header('X-Dev-User') || undefined;
 }
 

@@ -2,10 +2,15 @@
 # HOT_RELOAD=1 (local only) mounts backend-lambda/dist/<function> instead of uploading a zip.
 
 package_function() {
-  local fn="$1" zip_file="$WORK_DIR/$1.zip"
-  rm -f "$zip_file"
-  (cd "$LAMBDA_DIR/dist/$fn" && zip -qr "$zip_file" .)
-  echo "$zip_file"
+  local fn="$1"
+  # Use PowerShell Compress-Archive (native Windows zip) so aws.exe gets a valid zip file.
+  # Convert POSIX paths to Windows paths for PowerShell.
+  local win_src win_zip
+  win_src="$(echo "$LAMBDA_DIR/dist/$fn" | sed -E 's|^/([a-zA-Z])/|\1:/|')"
+  win_zip="$(echo "$WORK_DIR/$fn.zip" | sed -E 's|^/([a-zA-Z])/|\1:/|')"
+  rm -f "$WORK_DIR/$fn.zip"
+  powershell.exe -NoProfile -Command "Compress-Archive -Path '${win_src}/*' -DestinationPath '${win_zip}' -Force"
+  echo "$win_zip"
 }
 
 # Prints the --code / --zip-file style args for create (mode=create) or update (mode=update)
