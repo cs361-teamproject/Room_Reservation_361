@@ -39,6 +39,15 @@ PREFIX="$(jq -r .prefix "$MANIFEST")"
 API_NAME="$PREFIX-api"
 mkdir -p "$WORK_DIR"
 
+to_win_path() {
+  local p="$1"
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -m "$p"
+  else
+    echo "$p" | sed -E 's|^/([a-zA-Z])/(.*)|\1:/\2|'
+  fi
+}
+
 # aws CLI pointed at the current target
 awsx() {
   if [ "$TARGET" = local ]; then
@@ -61,13 +70,14 @@ fi
 # Function names to act on: the arguments after the target, or every function in the manifest.
 select_functions() {
   local all
-  all="$(jq -r '.functions[].name' "$MANIFEST")"
+  all="$(jq -r '.functions[].name' "$MANIFEST" | tr -d '\r')"
   if [ "$#" -eq 0 ]; then
     echo "$all"
     return
   fi
   local name
   for name in "$@"; do
+    name="$(echo "$name" | tr -d '\r')"
     echo "$all" | grep -qx "$name" || die "unknown function '$name' (known: $(echo "$all" | tr '\n' ' '))"
     echo "$name"
   done
