@@ -25,5 +25,5 @@ variable "db_password" {
 variable "db_engine_version" {
   description = "PostgreSQL 17 minor version supported in the selected AWS region."
   type        = string
-  default     = "17.4"
+  default     = "17.9"
 }

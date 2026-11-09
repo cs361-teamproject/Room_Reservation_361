@@ -127,7 +127,7 @@ resource "aws_db_subnet_group" "rds_subnet_group" {
 
 # 7. PostgreSQL 17 in private networking.
 resource "aws_db_instance" "postgres" {
-  identifier             = "room-reservation-db"
+  identifier             = "room-reservation-db-restored"
   engine                 = "postgres"
   engine_version         = var.db_engine_version
   instance_class         = "db.t3.micro"
@@ -141,6 +141,13 @@ resource "aws_db_instance" "postgres" {
   multi_az               = false
   publicly_accessible    = false
   skip_final_snapshot    = true
+  copy_tags_to_snapshot  = true
+
+  # The live password is whatever DATABASE_URL in the SAM stack uses; Terraform cannot read it
+  # back after an import, so never let an apply reset it.
+  lifecycle {
+    ignore_changes = [password]
+  }
 
   tags = {
     Name = "room-reservation-postgres"

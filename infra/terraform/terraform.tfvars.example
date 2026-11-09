@@ -1,4 +1,4 @@
 aws_region        = "ap-southeast-1"
 db_username       = "postgres"
 db_password       = "enterpassword"
-db_engine_version = "17"
+db_engine_version = "17.9"
