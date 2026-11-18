@@ -1,0 +1,7 @@
+# One account per line: username:password  (copy to users.txt, never commit users.txt)
+# Lines starting with # are ignored. Dev mode (local) needs only the username.
+loadtest-01:CHANGE_ME
+loadtest-02:CHANGE_ME
+loadtest-03:CHANGE_ME
+loadtest-04:CHANGE_ME
+loadtest-05:CHANGE_ME
