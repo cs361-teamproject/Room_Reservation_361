@@ -10,6 +10,9 @@
 
 การจองทุกรายการที่ load test สร้างมี title ขึ้นต้นด้วย `[LOADTEST]`
 
+เลือกยิงเฉพาะบาง task ได้ด้วย tag `list`, `detail`, `write` เช่น `--tags list detail` (อ่านอย่างเดียว ไม่เขียน DB)
+หรือ `--exclude-tags write` (ต้องใส่ตอนรันคำสั่ง หน้าเว็บเลือกไม่ได้)
+
 ## ติดตั้ง
 
 ```bash

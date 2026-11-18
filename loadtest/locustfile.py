@@ -33,7 +33,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 import requests
-from locust import HttpUser, between, events, task
+from locust import HttpUser, between, events, tag, task
 from locust.runners import WorkerRunner
 
 import banner
@@ -141,6 +141,7 @@ class RoomUser(HttpUser):
         return {"X-Dev-User": self.username}
 
     # ---------- 1. List: search / filter rooms ----------
+    @tag("list")
     @task(4)
     def list_rooms(self):
         params = {}
@@ -153,6 +154,7 @@ class RoomUser(HttpUser):
         self.client.get("/api/rooms", params=params, name="GET /api/rooms")
 
     # ---------- 2. Detail: room page = room info + that week's schedule ----------
+    @tag("detail")
     @task(4)
     def room_detail(self):
         if not self.room_ids:
@@ -168,6 +170,7 @@ class RoomUser(HttpUser):
         )
 
     # ---------- 3. Write: book a room ----------
+    @tag("write")
     @task(2)
     def create_booking(self):
         global conflict_count
