@@ -1,12 +1,12 @@
 import type { CSSProperties } from 'react'
 import Modal from './Modal'
 import StatusBadge from './StatusBadge'
-import { ghostDangerBtn, secondaryBtn } from './buttons'
+import { ghostDangerBtn, primaryBtn, secondaryBtn } from './buttons'
 import { useAsync } from '../hooks/useAsync'
 import { getBooking, getBookingEvents } from '../services/bookings'
 import type { BookingDetail, BookingEvent, BookingEventAction, BookingType } from '../types/booking'
 import { dateTimeLabel, fullDateLabel, timeRangeLabel } from '../utils/bkkDate'
-import { canCancel, canEdit, ROLE_LABELS } from '../utils/bookingRules'
+import { canCancel, canCheckIn, canEdit, ROLE_LABELS } from '../utils/bookingRules'
 
 const TYPE_LABEL: Record<BookingType, string> = {
   CLASS: 'คาบเรียน',
@@ -21,6 +21,8 @@ const EVENT_LOOK: Record<BookingEventAction, { label: string; color: string }> =
   APPROVED: { label: 'อนุมัติ', color: '#22C55E' },
   REJECTED: { label: 'ไม่อนุมัติ', color: '#EF4444' },
   CANCELLED: { label: 'ยกเลิก', color: '#9a9a9a' },
+  CHECKED_IN: { label: 'เช็กอิน', color: '#2563EB' },
+  NO_SHOW: { label: 'ไม่มาใช้ห้อง (ไม่เช็กอินภายใน 15 นาที)', color: '#E11D48' },
 }
 
 interface Props {
@@ -29,25 +31,32 @@ interface Props {
   /** Owner actions; leave out to show the booking read-only (staff view) */
   onEdit?: (booking: BookingDetail) => void
   onCancel?: (booking: BookingDetail) => void
+  onCheckIn?: (booking: BookingDetail) => void
 }
 
 const personLabel = (p: { display_name: string | null; role: keyof typeof ROLE_LABELS }) =>
   `${p.display_name ?? '-'} (${ROLE_LABELS[p.role]})`
 
-export default function BookingDetailModal({ id, onClose, onEdit, onCancel }: Props) {
+export default function BookingDetailModal({ id, onClose, onEdit, onCancel, onCheckIn }: Props) {
   const detail = useAsync(`detail-${id}`, () => getBooking(id))
   const events = useAsync(`events-${id}`, () => getBookingEvents(id))
   const b = detail.data
   const showEdit = Boolean(b && onEdit && canEdit(b))
   const showCancel = Boolean(b && onCancel && canCancel(b))
+  const showCheckIn = Boolean(b && onCheckIn && canCheckIn(b))
 
   return (
     <Modal
       title="รายละเอียดการจอง"
       onClose={onClose}
       footer={
-        b && (showEdit || showCancel) ? (
+        b && (showEdit || showCancel || showCheckIn) ? (
           <>
+            {showCheckIn && (
+              <button style={primaryBtn} onClick={() => onCheckIn?.(b)}>
+                เช็กอิน
+              </button>
+            )}
             {showEdit && (
               <button style={secondaryBtn} onClick={() => onEdit?.(b)}>
                 แก้เวลา
@@ -120,6 +129,12 @@ export default function BookingDetailModal({ id, onClose, onEdit, onCancel }: Pr
             <dd style={styles.dd}>{TYPE_LABEL[b.booking_type]}</dd>
             <dt style={styles.dt}>ส่งคำขอเมื่อ</dt>
             <dd style={styles.dd}>{dateTimeLabel(b.created_at)}</dd>
+            {b.checked_in_at && (
+              <>
+                <dt style={styles.dt}>เช็กอินเมื่อ</dt>
+                <dd style={styles.dd}>{dateTimeLabel(b.checked_in_at)}</dd>
+              </>
+            )}
           </dl>
 
           {b.status === 'REJECTED' && b.reject_reason && (

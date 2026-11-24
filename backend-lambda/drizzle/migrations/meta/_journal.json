@@ -43,6 +43,13 @@
       "when": 1792566182672,
       "tag": "0005_booking-attendees-on-behalf",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795547691760,
+      "tag": "0006_booking-check-in-no-show",
+      "breakpoints": true
     }
   ]
 }

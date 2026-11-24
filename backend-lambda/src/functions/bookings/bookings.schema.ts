@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const BOOKING_STATUSES = ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'] as const;
+const BOOKING_STATUSES = ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED', 'NO_SHOW'] as const;
 
 // Validates YYYY-MM-DD and rejects non-existent dates like 2026-02-30.
 // (Lambda runs TZ=UTC; local dev may run TZ=Asia/Bangkok).
@@ -24,7 +24,7 @@ function csvStatus() {
       typeof val === 'string' ? val.split(',').map((v) => v.trim()) : val,
     z.array(
       z.enum(BOOKING_STATUSES, {
-        error: 'Must be one of PENDING, APPROVED, REJECTED, CANCELLED',
+        error: 'Must be one of PENDING, APPROVED, REJECTED, CANCELLED, NO_SHOW',
       }),
     ),
   );

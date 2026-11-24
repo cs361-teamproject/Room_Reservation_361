@@ -5,7 +5,7 @@ import { ApiError, send } from './api'
 
 // STAFF/ADMIN endpoints (T8–T10, T9.1)
 
-const ALL_STATUSES: BookingStatus[] = ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']
+const ALL_STATUSES: BookingStatus[] = ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED', 'NO_SHOW']
 
 /** Latest requests first; the API defaults to PENDING, so "ALL" lists every status */
 export const getManageBookings = (status: BookingStatus | 'ALL', limit = 10): Promise<ManageBooking[]> =>

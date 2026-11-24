@@ -3,6 +3,8 @@ import { alias } from 'drizzle-orm/pg-core';
 import { type Db, getDb, type Tx } from '../../shared/db/client';
 import { bookingEvents, bookings, rooms, users } from '../../shared/db/schema';
 
+export type BookingStatus = (typeof bookings.$inferSelect)['status'];
+
 /** The person using the room when a staff member booked on their behalf */
 const roomUsers = alias(users, 'room_user');
 
@@ -11,7 +13,7 @@ export interface BookingFilters {
   fromEdge: Date;
   /** End of range (exclusive boundary): bookings with start_time < toEdge */
   toEdge: Date;
-  statuses: Array<'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'>;
+  statuses: BookingStatus[];
   roomId?: string;
 }
 
@@ -83,7 +85,7 @@ export type BookingEventAction = (typeof bookingEvents.$inferInsert)['action'];
  * Caller filters by status (default PENDING) and caps rows with limit (max 50).
  */
 export async function findManagedBookings(filters: {
-  statuses: Array<'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'>;
+  statuses: BookingStatus[];
   limit: number;
 }) {
   return getDb()
@@ -150,7 +152,7 @@ export async function recordEvent(
 export async function findMyBookings(params: {
   userId: string;
   scope: 'upcoming' | 'past' | 'all';
-  statuses?: Array<'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'>;
+  statuses?: BookingStatus[];
   page: number;
   limit: number;
 }) {
@@ -193,6 +195,7 @@ export async function findMyBookings(params: {
       startTime: bookings.startTime,
       endTime: bookings.endTime,
       status: bookings.status,
+      checkedInAt: bookings.checkedInAt,
     })
     .from(bookings)
     .innerJoin(rooms, eq(bookings.roomId, rooms.id))
@@ -223,6 +226,7 @@ export async function findBookingById(bookingId: string, db: Db | Tx = getDb()) 
       purpose: bookings.purpose,
       equipmentRequest: bookings.equipmentRequest,
       bookedForUserId: bookings.bookedForUserId,
+      checkedInAt: bookings.checkedInAt,
       roomId: rooms.id,
       roomName: rooms.roomName,
       seatCapacity: rooms.seatCapacity,
@@ -332,4 +336,45 @@ export async function findActiveUser(tx: Db | Tx, userId: string) {
     .where(and(eq(users.id, userId), isNull(users.deletedAt)))
     .limit(1);
   return user;
+}
+
+/** How long after the start the room user may still check in; later = NO_SHOW */
+export const CHECK_IN_GRACE_MS = 15 * 60 * 1000;
+
+/**
+ * Turns APPROVED bookings that nobody checked in to by start + 15 min into NO_SHOW, and logs a
+ * system NO_SHOW event for each. Lazy instead of a scheduler: callers run it before reading or
+ * booking, so a missed slot is freed (the overlap constraint skips NO_SHOW) the moment it matters.
+ * `roomId` limits it to one room (booking inside a transaction). Guarded by status, so two
+ * concurrent sweeps never mark or log the same booking twice.
+ */
+export async function markNoShows(db: Db | Tx, roomId?: string) {
+  const cutoff = new Date(Date.now() - CHECK_IN_GRACE_MS);
+  const marked = await db
+    .update(bookings)
+    .set({ status: 'NO_SHOW', updatedAt: new Date() })
+    .where(
+      and(
+        eq(bookings.status, 'APPROVED'),
+        eq(bookings.requiresCheckIn, true),
+        isNull(bookings.checkedInAt),
+        lt(bookings.startTime, cutoff),
+        roomId ? eq(bookings.roomId, roomId) : undefined,
+      ),
+    )
+    .returning({ id: bookings.id });
+  if (marked.length > 0) {
+    await db.insert(bookingEvents).values(marked.map((b) => ({ bookingId: b.id, actorId: null, action: 'NO_SHOW' as const })));
+  }
+  return marked.length;
+}
+
+/** Sets checked_in_at once: only an APPROVED booking not checked in yet; undefined when that changed meanwhile. */
+export async function checkInIfApproved(tx: Db | Tx, bookingId: string) {
+  const [row] = await tx
+    .update(bookings)
+    .set({ checkedInAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(bookings.id, bookingId), eq(bookings.status, 'APPROVED'), isNull(bookings.checkedInAt)))
+    .returning({ id: bookings.id, status: bookings.status, checkedInAt: bookings.checkedInAt });
+  return row;
 }

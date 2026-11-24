@@ -7,6 +7,7 @@ const LOOK: Record<BookingStatus, { label: string; style: CSSProperties }> = {
   APPROVED: { label: 'อนุมัติแล้ว', style: { background: '#F0FDF4', color: '#15803D', border: '1.5px solid #BBF7D0' } },
   REJECTED: { label: 'ไม่อนุมัติ', style: { background: '#FEF2F2', color: '#B91C1C', border: '1.5px solid #FECACA' } },
   CANCELLED: { label: 'ยกเลิกแล้ว', style: { background: '#F3F4F6', color: '#6b6b6b', border: '1.5px solid #E5E5E5' } },
+  NO_SHOW: { label: 'ไม่มาใช้ห้อง', style: { background: '#FFF1F2', color: '#9F1239', border: '1.5px dashed #FDA4AF' } },
 }
 
 export default function StatusBadge({ status }: { status: BookingStatus }) {

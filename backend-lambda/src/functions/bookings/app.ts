@@ -83,6 +83,11 @@ app.patch('/:id', requireAuth(), validate('json', updateBookingBody), async (c) 
   return c.json(successResponse(data, 'Booking updated successfully'));
 });
 
+app.post('/:id/check-in', requireAuth(), async (c) => {
+  const data = await service.checkIn(c.get('user')!, c.req.param('id'));
+  return c.json(successResponse(data, 'Checked in successfully'));
+});
+
 app.post('/:id/cancel', requireAuth(), validate('json', cancelBookingBody), async (c) => {
   const user = c.get('user')!;
   const bookingId = c.req.param('id');

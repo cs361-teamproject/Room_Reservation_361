@@ -5,7 +5,10 @@ import { badRequest, conflict, forbidden, notFound } from '../../shared/http/err
 import {
   approveIfPending,
   type BookingRow,
+  type BookingStatus,
+  CHECK_IN_GRACE_MS,
   cancelBooking,
+  checkInIfApproved,
   findBookingById,
   findBookingEvents,
   findBookingsInRange,
@@ -15,6 +18,7 @@ import {
   findRoomForBooking,
   insertBooking,
   type ManagedBookingRow,
+  markNoShows,
   recordEvent,
   rejectIfPending,
   type RoomForBooking,
@@ -97,6 +101,19 @@ const ROLE_LABELS: Record<UserRole, string> = {
 // Only STUDENT and LECTURER reach create() (requireRole in app.ts)
 const BOOKING_TYPE_BY_ROLE = { STUDENT: 'STUDENT_BOOKING', LECTURER: 'CLASS' } as const;
 
+/**
+ * Reads mark overdue no-shows first, at most once a minute per Lambda container, so a read
+ * endpoint under load does not run an UPDATE on every request. Booking (create/update) always
+ * sweeps its own room inside its transaction, so a missed slot is free the moment someone wants it.
+ */
+const SWEEP_EVERY_MS = 60 * 1000;
+let lastSweepAt = 0;
+async function sweepNoShows() {
+  if (Date.now() - lastSweepAt < SWEEP_EVERY_MS) return;
+  lastSweepAt = Date.now();
+  await markNoShows(getDb());
+}
+
 /** The room's booking rules: every broken one, so the user can fix them all at once. */
 function ruleViolations(room: RoomForBooking, start: Date, end: Date, now: Date): string[] {
   const problems: string[] = [];
@@ -112,10 +129,11 @@ function ruleViolations(room: RoomForBooking, start: Date, end: Date, now: Date)
 
 export const bookingsService = {
   async list(query: ListQuery) {
+    await sweepNoShows();
     const rows = await findBookingsInRange({
       fromEdge: toStartOfDay(query.from),
       toEdge: toEndOfDay(query.to),
-      statuses: query.status as Array<'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'>,
+      statuses: query.status as BookingStatus[],
       roomId: query.room_id,
     });
 
@@ -134,6 +152,8 @@ export const bookingsService = {
     return getDb().transaction(async (tx) => {
       const room = await findRoomForBooking(tx, body.room_id);
       if (!room) throw notFound('Room not found');
+      // Free slots of this room whose booker never checked in, before the overlap check
+      await markNoShows(tx, room.id);
 
       // Who will use the room: the caller, or (STAFF only) the person they book for
       const onBehalf = body.booked_for_user_id !== undefined;
@@ -201,8 +221,9 @@ export const bookingsService = {
 
   /** Staff/Admin queue: latest bookings first. Writes are STAFF-only (app.ts). */
   async manage(query: ManageQuery) {
+    await sweepNoShows();
     const rows = await findManagedBookings({
-      statuses: query.status as Array<'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'>,
+      statuses: query.status as BookingStatus[],
       limit: query.limit,
     });
     return rows.map(toManagedItem);
@@ -248,6 +269,7 @@ export const bookingsService = {
    * Get bookings owned by the authenticated user with pagination
    */
   async getMine(user: AuthUser, query: MineQuery) {
+    await sweepNoShows();
     const { items, total } = await findMyBookings({
       userId: user.id,
       scope: query.scope,
@@ -263,6 +285,7 @@ export const bookingsService = {
         start_time: item.startTime,
         end_time: item.endTime,
         status: item.status,
+        checked_in_at: item.checkedInAt,
       })),
       page: query.page,
       limit: query.limit,
@@ -275,6 +298,7 @@ export const bookingsService = {
    * Returns 404 if not found or user doesn't have access.
    */
   async getById(user: AuthUser, bookingId: string) {
+    await sweepNoShows();
     const booking = await findBookingById(bookingId);
 
     if (!booking) {
@@ -302,6 +326,7 @@ export const bookingsService = {
       cancel_reason: booking.cancelReason,
       remark: booking.remark,
       created_at: booking.createdAt,
+      checked_in_at: booking.checkedInAt,
       attendee_count: booking.attendeeCount,
       purpose: booking.purpose,
       equipment_request: booking.equipmentRequest,
@@ -322,6 +347,7 @@ export const bookingsService = {
    * Returns 404 if not found or user doesn't have access.
    */
   async getEvents(user: AuthUser, bookingId: string) {
+    await sweepNoShows();
     const booking = await findBookingById(bookingId);
 
     if (!booking) {
@@ -379,6 +405,7 @@ export const bookingsService = {
       if (!room) {
         throw notFound('Room not found');
       }
+      await markNoShows(tx, room.id);
 
       // Validate the new times using the same rules as create
       const problems = ruleViolations(room, start, end, new Date());
@@ -419,6 +446,34 @@ export const bookingsService = {
           room_name: booking.roomName,
         },
       };
+    });
+  },
+
+  /**
+   * Check in (POST /:id/check-in): the requester or the person booked for, on an APPROVED booking,
+   * from 15 minutes before the start to 15 minutes after it. Later, the booking becomes NO_SHOW.
+   */
+  async checkIn(user: AuthUser, bookingId: string) {
+    return getDb().transaction(async (tx) => {
+      const booking = await findBookingById(bookingId, tx);
+      // Same 404 for missing and not-yours, so ids of other people's bookings leak nothing
+      if (!booking || (booking.userId !== user.id && booking.bookedForUserId !== user.id)) {
+        throw notFound('Booking not found');
+      }
+
+      const now = Date.now();
+      const start = booking.startTime.getTime();
+      if (booking.checkedInAt) throw conflict('เช็กอินการจองนี้ไปแล้ว');
+      if (booking.status === 'NO_SHOW' || (booking.status === 'APPROVED' && now > start + CHECK_IN_GRACE_MS)) {
+        throw badRequest('เลยเวลาเช็กอินแล้ว (เช็กอินได้ถึง 15 นาทีหลังเวลาเริ่ม)');
+      }
+      if (booking.status !== 'APPROVED') throw badRequest('เช็กอินได้เฉพาะการจองที่อนุมัติแล้ว');
+      if (now < start - CHECK_IN_GRACE_MS) throw badRequest('เช็กอินได้ตั้งแต่ 15 นาทีก่อนเวลาเริ่ม');
+
+      const checkedIn = await checkInIfApproved(tx, bookingId);
+      if (!checkedIn) throw conflict('ไม่สามารถเช็กอินได้ สถานะอาจเปลี่ยนแปลงแล้ว');
+      await recordEvent(tx, { bookingId, actorId: user.id, action: 'CHECKED_IN' });
+      return { id: checkedIn.id, status: checkedIn.status, checked_in_at: checkedIn.checkedInAt };
     });
   },
 

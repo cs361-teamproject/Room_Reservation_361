@@ -1,4 +1,5 @@
-export type BookingStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
+/** NO_SHOW: approved, but nobody checked in by 15 minutes after the start */
+export type BookingStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'NO_SHOW'
 export type BookingType = 'CLASS' | 'SCHEDULE' | 'SPECIAL_EVENT' | 'STUDENT_BOOKING'
 
 /** Item of GET /api/bookings. Times are ISO strings in UTC. */
@@ -64,6 +65,8 @@ export interface MyBooking {
   start_time: string
   end_time: string
   status: BookingStatus
+  /** Set once the room user checked in */
+  checked_in_at?: string | null
 }
 
 export interface Page<T> {
@@ -92,11 +95,12 @@ export interface BookingDetail {
   reject_reason: string | null
   cancel_reason: string | null
   created_at: string
+  checked_in_at?: string | null
   /** Who booked it; present when STAFF/ADMIN view someone else's booking */
   user?: { display_name: string; role: UserRole }
 }
 
-export type BookingEventAction = 'CREATED' | 'UPDATED' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
+export type BookingEventAction = 'CREATED' | 'UPDATED' | 'APPROVED' | 'REJECTED' | 'CANCELLED' | 'CHECKED_IN' | 'NO_SHOW'
 
 /** Item of GET /api/bookings/:id/events */
 export interface BookingEvent {
@@ -125,6 +129,8 @@ export interface WeeklyStats {
   week_start: string
   total_bookings: number
   total_hours: number
-  rooms: { room_name: string; bookings: number; hours: number }[]
+  /** NO_SHOW bookings that started this week */
+  total_no_shows: number
+  rooms: { room_name: string; bookings: number; hours: number; checked_in: number; no_shows: number }[]
   top_room: string | null
 }

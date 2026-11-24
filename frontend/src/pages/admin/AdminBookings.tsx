@@ -22,6 +22,7 @@ const FILTERS: { value: BookingStatus | 'ALL'; label: string }[] = [
   { value: 'APPROVED', label: 'อนุมัติแล้ว' },
   { value: 'REJECTED', label: 'ไม่อนุมัติ' },
   { value: 'CANCELLED', label: 'ยกเลิก' },
+  { value: 'NO_SHOW', label: 'ไม่มาใช้ห้อง' },
   { value: 'ALL', label: 'ทั้งหมด' },
 ]
 

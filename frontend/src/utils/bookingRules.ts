@@ -18,4 +18,13 @@ export const canEdit = (b: { status: string; start_time: string }) =>
 export const canCancel = (b: { status: string; start_time: string }) =>
   (b.status === 'PENDING' || b.status === 'APPROVED') && Date.parse(b.start_time) > Date.now()
 
+/** Check-in window, same as POST /bookings/:id/check-in: 15 min before to 15 min after the start */
+export const CHECK_IN_WINDOW_MS = 15 * 60 * 1000
+
+export const canCheckIn = (b: { status: string; start_time: string; checked_in_at?: string | null }) => {
+  const start = Date.parse(b.start_time)
+  const now = Date.now()
+  return b.status === 'APPROVED' && !b.checked_in_at && now >= start - CHECK_IN_WINDOW_MS && now <= start + CHECK_IN_WINDOW_MS
+}
+
 export const hasStarted = (b: { start_time: string }) => Date.parse(b.start_time) <= Date.now()

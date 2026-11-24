@@ -10,11 +10,11 @@ import StatusBadge from '../components/StatusBadge'
 import { useToast } from '../components/Toast'
 import { ghostDangerBtn, primaryBtn, secondaryBtn } from '../components/buttons'
 import { useAsync } from '../hooks/useAsync'
-import { getMyBookings } from '../services/bookings'
+import { checkInBooking, getMyBookings } from '../services/bookings'
 import { getRoomRulesByName } from '../services/rooms'
 import type { MyBooking, MyBookingsScope } from '../types/booking'
 import { fullDateLabel, timeRangeLabel } from '../utils/bkkDate'
-import { canCancel, canEdit } from '../utils/bookingRules'
+import { canCancel, canCheckIn, canEdit } from '../utils/bookingRules'
 
 const PAGE_SIZE = 5
 
@@ -53,6 +53,16 @@ export default function MyBookings() {
     setDialog(null)
     show(message)
     reload()
+  }
+
+  const checkIn = async (id: string) => {
+    try {
+      await checkInBooking(id)
+      afterChange('เช็กอินแล้ว')
+    } catch (e) {
+      show(`เช็กอินไม่สำเร็จ: ${e instanceof Error ? e.message : e}`)
+      reload()
+    }
   }
 
   return (
@@ -104,6 +114,7 @@ export default function MyBookings() {
                   onOpen={() => setDialog({ kind: 'detail', id: b.id })}
                   onEdit={() => setDialog({ kind: 'edit', booking: b })}
                   onCancel={() => setDialog({ kind: 'cancel', booking: b })}
+                  onCheckIn={() => checkIn(b.id)}
                 />
               ))}
             </ul>
@@ -120,6 +131,7 @@ export default function MyBookings() {
             setDialog({ kind: 'edit', booking: { ...b, room_name: b.room.room_name } })
           }
           onCancel={(b) => setDialog({ kind: 'cancel', booking: { ...b, room_name: b.room.room_name } })}
+          onCheckIn={(b) => checkIn(b.id)}
         />
       )}
       {dialog?.kind === 'edit' && (
@@ -166,14 +178,15 @@ interface CardProps {
   onOpen: () => void
   onEdit: () => void
   onCancel: () => void
+  onCheckIn: () => void
 }
 
-function BookingCard({ booking: b, onOpen, onEdit, onCancel }: CardProps) {
+function BookingCard({ booking: b, onOpen, onEdit, onCancel, onCheckIn }: CardProps) {
   const stop = (fn: () => void) => (e: MouseEvent) => {
     e.stopPropagation()
     fn()
   }
-  const faded = b.status === 'CANCELLED' || b.status === 'REJECTED'
+  const faded = b.status === 'CANCELLED' || b.status === 'REJECTED' || b.status === 'NO_SHOW'
 
   return (
     <li
@@ -189,12 +202,18 @@ function BookingCard({ booking: b, onOpen, onEdit, onCancel }: CardProps) {
         <div style={styles.cardTitleRow}>
           <span style={styles.roomName}>{b.room_name}</span>
           <StatusBadge status={b.status} />
+          {b.checked_in_at && <span style={styles.checkedIn}>เช็กอินแล้ว</span>}
         </div>
         <span style={styles.when}>
           {fullDateLabel(b.start_time)} · {timeRangeLabel(b.start_time, b.end_time)}
         </span>
       </div>
       <div className="booking-card-actions" style={styles.actions}>
+        {canCheckIn(b) && (
+          <button style={{ ...primaryBtn, ...styles.smallBtn }} onClick={stop(onCheckIn)}>
+            เช็กอิน
+          </button>
+        )}
         {canEdit(b) && (
           <button style={{ ...secondaryBtn, ...styles.smallBtn }} onClick={stop(onEdit)}>
             แก้เวลา
@@ -293,6 +312,7 @@ const styles: Record<string, CSSProperties> = {
   when: { fontSize: 15, color: '#4b4b4b' },
   actions: { display: 'flex', alignItems: 'center', gap: 10, flex: 'none' },
   smallBtn: { height: 36, padding: '0 14px', fontSize: 14 },
+  checkedIn: { fontSize: 13, fontWeight: 600, color: '#2563EB' },
   more: { fontSize: 14, color: '#6b6b6b', whiteSpace: 'nowrap' },
   pagination: { display: 'flex', justifyContent: 'center', gap: 8, marginTop: 24 },
 }
