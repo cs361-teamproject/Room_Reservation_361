@@ -1,3 +1,5 @@
+import { getDb } from '../../shared/db/client';
+import { markNoShows } from '../bookings/bookings.repository';
 import { type RoomWeekStat, weeklyRoomStats } from './stats.repository';
 import type { WeeklyQuery } from './stats.schema';
 
@@ -24,10 +26,14 @@ const toItem = (row: RoomWeekStat) => ({
   room_name: row.roomName,
   bookings: row.bookings,
   hours: row.hours,
+  checked_in: row.checkedIn,
+  no_shows: row.noShows,
 });
 
 export const statsService = {
   async weekly(query: WeeklyQuery) {
+    // Admin-only and rare, so it always sweeps: overdue no-shows are counted as no-shows
+    await markNoShows(getDb());
     const { mondayBkk, label } = mondayOfWeek(query.week);
     const rows = await weeklyRoomStats(mondayBkk, new Date(mondayBkk.getTime() + 7 * DAY_MS));
     const items = rows.map(toItem);
@@ -36,6 +42,7 @@ export const statsService = {
       total_bookings: items.reduce((n, r) => n + r.bookings, 0),
       // Sum of rounded floats: round again so 0.1 + 0.2 never shows as 0.30000000000000004
       total_hours: Math.round(items.reduce((n, r) => n + r.hours, 0) * 100) / 100,
+      total_no_shows: items.reduce((n, r) => n + r.no_shows, 0),
       rooms: items,
       top_room: items[0]?.room_name ?? null,
     };

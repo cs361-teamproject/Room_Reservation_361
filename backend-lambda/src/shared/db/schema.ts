@@ -2,7 +2,7 @@
 // so table/column/index names match the existing database exactly.
 // From here on Drizzle owns the schema: edit this file, then `npm run db:generate`.
 import { randomUUID } from 'node:crypto';
-import { check, foreignKey, index, integer, pgEnum, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { boolean, check, foreignKey, index, integer, pgEnum, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const USER_ROLES = ['STUDENT', 'LECTURER', 'STAFF', 'ADMIN'] as const;
@@ -15,8 +15,17 @@ export const roomStatus = pgEnum('RoomStatus', ['AVAILABLE', 'MAINTENANCE', 'RES
 export const roomSize = pgEnum('RoomSize', ['SMALL', 'MEDIUM', 'LARGE']);
 export const roomType = pgEnum('RoomType', ['LAB', 'LECTURE', 'MEETING', 'COWORKING']);
 export const bookingType = pgEnum('BookingType', ['CLASS', 'SCHEDULE', 'SPECIAL_EVENT', 'STUDENT_BOOKING']);
-export const bookingStatus = pgEnum('BookingStatus', ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']);
-export const bookingEventAction = pgEnum('BookingEventAction', ['CREATED', 'UPDATED', 'APPROVED', 'REJECTED', 'CANCELLED']);
+// NO_SHOW: APPROVED but nobody checked in by 15 minutes after the start; frees the slot like REJECTED/CANCELLED
+export const bookingStatus = pgEnum('BookingStatus', ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED', 'NO_SHOW']);
+export const bookingEventAction = pgEnum('BookingEventAction', [
+  'CREATED',
+  'UPDATED',
+  'APPROVED',
+  'REJECTED',
+  'CANCELLED',
+  'CHECKED_IN',
+  'NO_SHOW',
+]);
 
 const id = () => text('id').primaryKey().$defaultFn(() => randomUUID());
 const ts = (name: string) => timestamp(name, { precision: 3, mode: 'date', withTimezone: true });
@@ -180,6 +189,11 @@ export const bookings = pgTable(
     reviewedBy: text('reviewed_by'),
     reviewedAt: ts('reviewed_at'),
     rejectReason: text('reject_reason'),
+    // Set when the room user checks in (15 min before to 15 min after the start); null = not yet
+    checkedInAt: ts('checked_in_at'),
+    // Only bookings made after check-in shipped can become NO_SHOW; rows that existed then are false
+    // (set by migration 0006), so past bookings are never rewritten as no-shows.
+    requiresCheckIn: boolean('requires_check_in').default(true).notNull(),
   },
   // The no-overlap EXCLUDE constraint (booking_no_overlap) is not expressible in Drizzle;
   // it lives in the custom migration 0004_booking-no-overlap.sql.

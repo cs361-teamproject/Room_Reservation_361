@@ -29,5 +29,8 @@ export const getBookingEvents = (id: string): Promise<BookingEvent[]> => send(ax
 export const updateBookingTime = (id: string, input: UpdateBookingTimeInput): Promise<unknown> =>
   send(axiosInstance.patch(`/bookings/${id}`, input))
 
+/** Allowed 15 min before to 15 min after the start; later the booking becomes NO_SHOW */
+export const checkInBooking = (id: string): Promise<unknown> => send(axiosInstance.post(`/bookings/${id}/check-in`))
+
 export const cancelBooking = (id: string, reason?: string): Promise<unknown> =>
   send(axiosInstance.post(`/bookings/${id}/cancel`, { reason }))
