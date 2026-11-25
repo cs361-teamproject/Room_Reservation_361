@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { CSSProperties, MouseEvent } from 'react'
 import { Link } from 'react-router-dom'
 import BookingDetailModal from '../components/BookingDetailModal'
@@ -8,13 +8,13 @@ import EmptyState from '../components/EmptyState'
 import Modal from '../components/Modal'
 import StatusBadge from '../components/StatusBadge'
 import { useToast } from '../components/Toast'
-import { ghostDangerBtn, primaryBtn, secondaryBtn } from '../components/buttons'
+import { disabledBtn, ghostDangerBtn, primaryBtn, secondaryBtn } from '../components/buttons'
 import { useAsync } from '../hooks/useAsync'
 import { checkInBooking, getMyBookings } from '../services/bookings'
 import { getRoomRulesByName } from '../services/rooms'
 import type { MyBooking, MyBookingsScope } from '../types/booking'
 import { fullDateLabel, timeRangeLabel } from '../utils/bkkDate'
-import { canCancel, canCheckIn, canEdit } from '../utils/bookingRules'
+import { canCancel, canCheckIn, canEdit, checkInNotOpenYet, checkInWindowLabel } from '../utils/bookingRules'
 
 const PAGE_SIZE = 5
 
@@ -187,6 +187,8 @@ function BookingCard({ booking: b, onOpen, onEdit, onCancel, onCheckIn }: CardPr
     fn()
   }
   const faded = b.status === 'CANCELLED' || b.status === 'REJECTED' || b.status === 'NO_SHOW'
+  // Re-render every 30 s so the check-in button turns on when its window opens
+  useTick(30_000)
 
   return (
     <li
@@ -214,6 +216,19 @@ function BookingCard({ booking: b, onOpen, onEdit, onCancel, onCheckIn }: CardPr
             เช็กอิน
           </button>
         )}
+        {checkInNotOpenYet(b) && (
+          <span style={styles.checkInLater}>
+            <button
+              style={{ ...primaryBtn, ...styles.smallBtn, ...disabledBtn }}
+              disabled
+              onClick={stop(() => undefined)}
+              title={`เช็กอินได้ ${checkInWindowLabel(b)}`}
+            >
+              เช็กอิน
+            </button>
+            <span style={styles.checkInHint}>เปิด {checkInWindowLabel(b)}</span>
+          </span>
+        )}
         {canEdit(b) && (
           <button style={{ ...secondaryBtn, ...styles.smallBtn }} onClick={stop(onEdit)}>
             แก้เวลา
@@ -228,6 +243,14 @@ function BookingCard({ booking: b, onOpen, onEdit, onCancel, onCheckIn }: CardPr
       </div>
     </li>
   )
+}
+
+function useTick(ms: number) {
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), ms)
+    return () => clearInterval(id)
+  }, [ms])
 }
 
 function Pagination({ page, pages, onChange }: { page: number; pages: number; onChange: (p: number) => void }) {
@@ -313,6 +336,8 @@ const styles: Record<string, CSSProperties> = {
   actions: { display: 'flex', alignItems: 'center', gap: 10, flex: 'none' },
   smallBtn: { height: 36, padding: '0 14px', fontSize: 14 },
   checkedIn: { fontSize: 13, fontWeight: 600, color: '#2563EB' },
+  checkInLater: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 },
+  checkInHint: { fontSize: 12, color: '#9a9a9a', whiteSpace: 'nowrap' },
   more: { fontSize: 14, color: '#6b6b6b', whiteSpace: 'nowrap' },
   pagination: { display: 'flex', justifyContent: 'center', gap: 8, marginTop: 24 },
 }
