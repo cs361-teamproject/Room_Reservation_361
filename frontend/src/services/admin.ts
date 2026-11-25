@@ -1,7 +1,8 @@
 import axiosInstance from '../config/axios'
 import type { AdminRoom, RoomInput, RoomPhoto, RoomRulesInput } from '../types/admin'
-import type { BookingStatus, ManageBooking, UserRole, WeeklyStats } from '../types/booking'
-import { ApiError, send } from './api'
+import type { Booking, BookingStatus, ManageBooking, UserRole, WeeklyStats } from '../types/booking'
+import { addDays } from '../utils/bkkDate'
+import { ApiError, getData, send } from './api'
 
 // STAFF/ADMIN endpoints (T8–T10, T9.1)
 
@@ -14,6 +15,28 @@ export const getManageBookings = (status: BookingStatus | 'ALL', limit = 10): Pr
       params: { status: (status === 'ALL' ? ALL_STATUSES : [status]).join(','), limit },
     }),
   )
+
+// GET /bookings allows at most 31 days per request
+const RANGE_CHUNK_DAYS = 28
+
+/**
+ * Every room's bookings between two Bangkok dates (inclusive), for the staff calendar.
+ * A month view spans 42 days, so the range is fetched in chunks and merged by id
+ * (a booking that crosses a chunk edge comes back twice).
+ */
+export async function getBookingsInRange(from: string, to: string, statuses: BookingStatus[]): Promise<Booking[]> {
+  const chunks: [string, string][] = []
+  for (let start = from; start <= to; start = addDays(start, RANGE_CHUNK_DAYS)) {
+    const end = addDays(start, RANGE_CHUNK_DAYS - 1)
+    chunks.push([start, end < to ? end : to])
+  }
+  const pages = await Promise.all(
+    chunks.map(([f, t]) => getData<Booking[]>('/bookings', { from: f, to: t, status: statuses.join(',') })),
+  )
+  const byId = new Map<string, Booking>()
+  for (const b of pages.flat()) byId.set(b.id, b)
+  return [...byId.values()].sort((a, b) => Date.parse(a.start_time) - Date.parse(b.start_time))
+}
 
 export const getPendingCount = async (): Promise<number> => (await getManageBookings('PENDING', 50)).length
 
