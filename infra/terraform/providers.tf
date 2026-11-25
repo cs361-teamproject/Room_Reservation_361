@@ -1,6 +1,6 @@
 terraform {
   backend "s3" {
-    bucket       = "roomres-terraform-state-568318158381-ap-southeast-1"
+    bucket       = "roomres-terraform-state-755729228426-ap-southeast-1"
     key          = "room-reservation/terraform.tfstate"
     region       = "ap-southeast-1"
     encrypt      = true

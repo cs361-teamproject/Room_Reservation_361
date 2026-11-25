@@ -27,3 +27,12 @@ variable "db_engine_version" {
   type        = string
   default     = "17.9"
 }
+
+variable "frontend_origins" {
+  description = "Browser origins of the frontend, allowed by the photos bucket CORS rule. Keep in sync with the SAM AllowedOrigins parameter."
+  type        = list(string)
+  default = [
+    "https://main.d1y960msxzwtz9.amplifyapp.com",
+    "http://localhost:5173",
+  ]
+}
