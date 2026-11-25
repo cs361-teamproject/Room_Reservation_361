@@ -279,29 +279,10 @@ body {
   }
 }
 
-/* Admin: side menu becomes tabs, room table becomes cards */
+/* Admin: section tabs stretch, room table becomes cards */
 @media (max-width: 900px) {
   .admin-page {
     padding: 24px 24px 64px !important;
-  }
-
-  .admin-shell {
-    grid-template-columns: 1fr !important;
-    gap: 18px !important;
-  }
-
-  .admin-side {
-    position: static !important;
-    padding: 8px !important;
-  }
-
-  .admin-side-title {
-    display: none !important;
-  }
-
-  .admin-menu {
-    flex-direction: row !important;
-    overflow-x: auto !important;
   }
 
   .admin-menu a {

@@ -19,7 +19,7 @@ const MENU: MenuItem[] = [
   { to: '/admin/stats', label: 'สถิติ', roles: ['ADMIN'] },
 ]
 
-/** Side menu on desktop, a row of tabs on phones (.admin-* in index.css) */
+/** Section tabs above the page; the content gets the full width (.admin-* in index.css) */
 export default function AdminLayout() {
   // RequireRole only renders this for STAFF / ADMIN
   const user = useAuth().user!
@@ -29,26 +29,21 @@ export default function AdminLayout() {
 
   return (
     <main className="admin-page" style={styles.main}>
-      <div className="admin-shell" style={styles.shell}>
-        <aside className="admin-side" style={styles.side}>
-          <span className="admin-side-title" style={styles.sideTitle}>
-            {user.role === 'ADMIN' ? 'ผู้ดูแลระบบ' : 'เจ้าหน้าที่'}
-          </span>
-          <nav className="admin-menu" style={styles.menu}>
-            {MENU.filter((m) => m.roles.includes(user.role)).map((m) => (
-              <NavLink key={m.to} to={m.to} style={({ isActive }) => ({ ...styles.item, ...(isActive ? styles.itemActive : null) })}>
-                {({ isActive }) => (
-                  <>
-                    <span>{m.label}</span>
-                    {m.to === '/admin/bookings' && Boolean(count) && (
-                      <span style={{ ...styles.badge, ...(isActive ? styles.badgeActive : null) }}>{count}</span>
-                    )}
-                  </>
-                )}
-              </NavLink>
-            ))}
-          </nav>
-        </aside>
+      <div style={styles.shell}>
+        <nav className="admin-menu" style={styles.menu} aria-label="เมนูผู้ดูแล">
+          {MENU.filter((m) => m.roles.includes(user.role)).map((m) => (
+            <NavLink key={m.to} to={m.to} style={({ isActive }) => ({ ...styles.item, ...(isActive ? styles.itemActive : null) })}>
+              {({ isActive }) => (
+                <>
+                  <span>{m.label}</span>
+                  {m.to === '/admin/bookings' && Boolean(count) && (
+                    <span style={{ ...styles.badge, ...(isActive ? styles.badgeActive : null) }}>{count}</span>
+                  )}
+                </>
+              )}
+            </NavLink>
+          ))}
+        </nav>
         <section style={styles.content}>
           <Outlet context={{ refreshPending } satisfies AdminContext} />
         </section>
@@ -58,32 +53,26 @@ export default function AdminLayout() {
 }
 
 const styles: Record<string, CSSProperties> = {
-  main: { padding: '32px 40px 80px' },
-  shell: { maxWidth: 1240, margin: '0 auto', display: 'grid', gridTemplateColumns: '220px minmax(0, 1fr)', gap: 28, alignItems: 'start' },
-  side: {
-    position: 'sticky',
-    top: 24,
+  main: { padding: '24px 40px 80px' },
+  shell: { maxWidth: 1240, margin: '0 auto' },
+  menu: {
     display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
-    padding: 16,
-    background: '#ffffff',
-    borderRadius: 14,
-    boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+    gap: 6,
+    marginBottom: 20,
+    paddingBottom: 12,
+    borderBottom: '1px solid #ECECEC',
+    overflowX: 'auto',
   },
-  sideTitle: { padding: '4px 10px', fontSize: 13, color: '#6b6b6b' },
-  menu: { display: 'flex', flexDirection: 'column', gap: 4 },
   item: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: 8,
-    height: 42,
-    padding: '0 12px',
-    borderRadius: 8,
+    height: 38,
+    padding: '0 16px',
+    borderRadius: 999,
     fontSize: 15,
     fontWeight: 600,
-    color: '#1a1a1a',
+    color: '#4b4b4b',
     textDecoration: 'none',
     whiteSpace: 'nowrap',
   },

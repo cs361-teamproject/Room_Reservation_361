@@ -1,4 +1,5 @@
 import type { UserRole } from '../types/booking'
+import { timeRangeLabel } from './bkkDate'
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   STUDENT: 'นักศึกษา',
@@ -28,3 +29,13 @@ export const canCheckIn = (b: { status: string; start_time: string; checked_in_a
 }
 
 export const hasStarted = (b: { start_time: string }) => Date.parse(b.start_time) <= Date.now()
+
+/** APPROVED and waiting for its check-in window to open (shown as a disabled button) */
+export const checkInNotOpenYet = (b: { status: string; start_time: string; checked_in_at?: string | null }) =>
+  b.status === 'APPROVED' && !b.checked_in_at && Date.now() < Date.parse(b.start_time) - CHECK_IN_WINDOW_MS
+
+/** The check-in window as Bangkok times, e.g. "15:15–15:45" for a 15:30 start */
+export const checkInWindowLabel = (b: { start_time: string }) => {
+  const start = Date.parse(b.start_time)
+  return timeRangeLabel(new Date(start - CHECK_IN_WINDOW_MS).toISOString(), new Date(start + CHECK_IN_WINDOW_MS).toISOString())
+}
