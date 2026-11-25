@@ -36,3 +36,21 @@ variable "frontend_origins" {
     "http://localhost:5173",
   ]
 }
+
+variable "rds_night_stop_enabled" {
+  description = "Run the nightly RDS stop/start schedules. Off until the project hand-in, so late work and demos still reach the DB."
+  type        = bool
+  default     = false
+}
+
+variable "rds_stop_cron" {
+  description = "When to stop the DB, EventBridge cron in Asia/Bangkok."
+  type        = string
+  default     = "cron(0 2 * * ? *)"
+}
+
+variable "rds_start_cron" {
+  description = "When to start the DB, EventBridge cron in Asia/Bangkok. Start takes ~5-10 minutes."
+  type        = string
+  default     = "cron(0 7 * * ? *)"
+}
