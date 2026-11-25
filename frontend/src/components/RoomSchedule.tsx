@@ -3,13 +3,12 @@ import type { CSSProperties } from 'react'
 import { useAsync } from '../hooks/useAsync'
 import { getRoomBookings } from '../services/bookings'
 import type { Booking, DayBlock } from '../types/booking'
+import { blocksForDay } from '../utils/scheduleLayout'
 import {
   addDays,
-  bkkMidnight,
   bkkToday,
   dayNumber,
   formatMinutes,
-  minutesInDay,
   nowMinutes,
   startOfWeek,
   weekDays,
@@ -24,8 +23,6 @@ const CLOSE_MIN = 20 * 60
 const HOUR_PX = 34
 // Booking rule: at most 7 days in advance
 const BOOKABLE_DAYS = 7
-// Only PENDING and APPROVED block the room (same rule as the backend availability check)
-const BLOCKING = new Set(['PENDING', 'APPROVED'])
 
 const TYPE_LABEL: Record<Booking['booking_type'], string> = {
   CLASS: 'คาบเรียน',
@@ -317,34 +314,6 @@ function useNowMinutes() {
     return () => clearInterval(id)
   }, [])
   return now
-}
-
-/** Bookings that touch `day`, clipped to it, with side-by-side lanes for overlaps */
-function blocksForDay(bookings: Booking[], day: string): DayBlock[] {
-  const dayStart = bkkMidnight(day)
-  const dayEnd = dayStart + 86_400_000
-  const blocks = bookings
-    .filter((b) => BLOCKING.has(b.status))
-    .filter((b) => Date.parse(b.start_time) < dayEnd && Date.parse(b.end_time) > dayStart)
-    .map((b) => ({
-      booking: b,
-      startMin: Math.max(0, minutesInDay(Date.parse(b.start_time), day)),
-      endMin: Math.min(24 * 60, minutesInDay(Date.parse(b.end_time), day)),
-      lane: 0,
-      lanes: 1,
-    }))
-    .sort((a, b) => a.startMin - b.startMin)
-
-  // The DB has no exclusion constraint, so overlapping bookings are possible
-  const laneEnds: number[] = []
-  for (const block of blocks) {
-    let lane = laneEnds.findIndex((end) => end <= block.startMin)
-    if (lane === -1) lane = laneEnds.length
-    laneEnds[lane] = block.endMin
-    block.lane = lane
-  }
-  for (const block of blocks) block.lanes = Math.max(1, laneEnds.length)
-  return blocks
 }
 
 /** Free [start, end) minute ranges between `open` and `close` */

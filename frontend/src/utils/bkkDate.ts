@@ -81,3 +81,20 @@ export function dateTimeLabel(iso: string): string {
   const [, m, d] = ymd.split('-').map(Number)
   return `${d} ${MONTHS_TH[m - 1]} ${formatMinutes(Math.floor(minutesInDay(ms, ymd)))}`
 }
+
+/** First day of the month `months` away from the month of `ymd` */
+export function addMonths(ymd: string, months: number): string {
+  const [y, m] = ymd.split('-').map(Number)
+  const index = y * 12 + (m - 1) + months
+  return `${Math.floor(index / 12)}-${pad((index % 12) + 1)}-01`
+}
+
+/** The 6 weeks (42 days, Sunday first) that show the month of `ymd` */
+export const monthGrid = (ymd: string): string[] =>
+  Array.from({ length: 42 }, (_, i) => addDays(startOfWeek(addMonths(ymd, 0)), i))
+
+/** e.g. "พ.ย. 2569" (Buddhist year) */
+export function monthLabel(ymd: string): string {
+  const [y, m] = ymd.split('-').map(Number)
+  return `${MONTHS_TH[m - 1]} ${y + 543}`
+}
