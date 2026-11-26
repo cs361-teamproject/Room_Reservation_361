@@ -38,9 +38,9 @@ variable "frontend_origins" {
 }
 
 variable "rds_night_stop_enabled" {
-  description = "Run the nightly RDS stop/start schedules. Off until the project hand-in, so late work and demos still reach the DB."
+  description = "Run the nightly RDS stop/start schedules (02:00-07:00 Bangkok). Set false while someone needs the DB at night."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "rds_stop_cron" {
